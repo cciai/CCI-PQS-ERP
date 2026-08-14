@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root{
     --navy:#101B2D; --navy-2:#16233A;
@@ -439,6 +440,8 @@
     <div class="app-nav">
       <button class="app-nav-btn active" id="navProjects">📁 Projects</button>
       <button class="app-nav-btn" id="navSubcontractors">👷 Subcontractors</button>
+      <button class="app-nav-btn" id="navBankRecon">🏦 Bank Recon</button>
+      <button class="app-nav-btn" id="navBank">🏦 Bank Reconciliation</button>
     </div>
     <div id="projectSubNav"></div>
     <div id="projectsNav" style="flex:1; display:flex; flex-direction:column; min-height:0;">
@@ -607,6 +610,12 @@ let state = {
   pasteTargetStageId: null,
   showProjectBin: false,
   projectBin: [],
+  bankTxns: [],
+  bankReconStep: 'upload',
+  bankUploadPreview: null,
+  bankUploadBatchId: null,
+  bankTxnPage: 1,
+  bankTxnFilter: 'unmatched',
   viewingLedgerFor: null,
   ledgerBills: [],
   ledgerPayments: []
@@ -687,6 +696,7 @@ async function showApp(){
     switchAppView('projects');
   };
   document.getElementById('navSubcontractors').onclick = () => switchAppView('subcontractors');
+  document.getElementById('navBankRecon').onclick = () => switchAppView('bankrecon');
   await loadProjects();
   switchAppView('projects');
 }
@@ -695,12 +705,15 @@ function switchAppView(view){
   state.appView = view;
   document.getElementById('navProjects').classList.toggle('active', view === 'projects');
   document.getElementById('navSubcontractors').classList.toggle('active', view === 'subcontractors');
+  document.getElementById('navBankRecon').classList.toggle('active', view === 'bankrecon');
   document.getElementById('projectsNav').style.display = view === 'projects' ? 'flex' : 'none';
   document.getElementById('newProjBtn').style.display = (view === 'projects' && canEditBudget()) ? 'block' : 'none';
   renderProjectSubNav();
   if(view === 'subcontractors'){
     state.scCreating = false; state.scEditingId = null; state.viewingLedgerFor = null;
     renderSubcontractorsView();
+  } else if(view === 'bankrecon'){
+    renderBankReconView();
   } else {
     renderMain();
   }
@@ -708,6 +721,8 @@ function switchAppView(view){
 
 function canEditBudget(){ return myRole === 'owner' || myRole === 'pm'; }
 function isOwner(){ return myRole === 'owner'; }
+function canReconcile(){ return myRole === 'owner' || myRole === 'pm' || myRole === 'accounts'; }
+function canResolveFlagged(){ return myRole === 'owner' || myRole === 'pm' || myRole === 'qs'; }
 
 /* On load, check if already signed in from a previous session */
 (async () => {
@@ -1184,6 +1199,412 @@ async function loadSubcontractors(){
     state.subcontractors = data || [];
     state.subcontractorsLoaded = true;
   } catch(err){ toast('Could not load subcontractors — please try again.', true); console.error(err); }
+}
+
+/* ============================================================================
+   BANK RECONCILIATION — upload a bank statement export, get suggested
+   matches against your existing subcontractor bank details (no AI call
+   needed for this — it's fuzzy text matching against data you already
+   have), confirm each one, and it posts into the subcontractor ledger, a
+   general Expense, or a Client Receipt. Ambiguous ones can be flagged to QS.
+============================================================================ */
+const EXPENSE_CATEGORY_LABELS = { materials:'Materials', site_expense:'Site Expense', overhead:'Overhead', other:'Other' };
+
+function normalizeText(s){ return (s||'').toUpperCase().replace(/[^A-Z0-9 ]/g,' ').replace(/\s+/g,' ').trim(); }
+
+// Pulls the header row + data rows out of an uploaded CSV/XLSX, and tries to
+// find which column is which — bank exports vary a lot between HDFC/ICICI/
+// SBI/Axis etc., so this looks for common header name patterns rather than
+// assuming a fixed layout.
+function parseBankWorkbook(arrayBuffer, isCSV){
+  const wb = isCSV ? XLSX.read(arrayBuffer, { type: 'binary' }) : XLSX.read(arrayBuffer, { type: 'array' });
+  const sheet = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+  // Find the header row — the first row with at least 3 non-empty cells and
+  // something that looks like "date" or "narration"/"description".
+  let headerIdx = -1, headers = [];
+  for(let i = 0; i < Math.min(rows.length, 15); i++){
+    const cells = rows[i].map(c => normalizeText(String(c)));
+    if(cells.filter(Boolean).length >= 3 && cells.some(c => c.includes('DATE')) && cells.some(c => c.includes('NARRATION') || c.includes('DESCRIPTION') || c.includes('PARTICULAR'))){
+      headerIdx = i; headers = cells; break;
+    }
+  }
+  if(headerIdx === -1) return { error: 'Could not find a header row with Date and Narration/Description columns. Try exporting a plain CSV from your bank\'s netbanking.' };
+
+  const col = (patterns) => headers.findIndex(h => patterns.some(p => h.includes(p)));
+  const dateCol = col(['DATE']);
+  const narrCol = col(['NARRATION','DESCRIPTION','PARTICULAR']);
+  const debitCol = col(['DEBIT','WITHDRAWAL']);
+  const creditCol = col(['CREDIT','DEPOSIT']);
+  const balanceCol = col(['BALANCE']);
+  if(dateCol === -1 || narrCol === -1 || (debitCol === -1 && creditCol === -1)){
+    return { error: 'Found a header row but could not identify Date/Narration/Debit/Credit columns clearly. The file may need to be a plain transaction export, not a formatted statement.' };
+  }
+
+  const parsed = [];
+  for(let i = headerIdx + 1; i < rows.length; i++){
+    const r = rows[i];
+    if(!r || !r.length) continue;
+    const dateRaw = r[dateCol];
+    if(!dateRaw) continue;
+    const debit = debitCol !== -1 ? parseFloat(String(r[debitCol]).replace(/[^0-9.]/g,'')) : NaN;
+    const credit = creditCol !== -1 ? parseFloat(String(r[creditCol]).replace(/[^0-9.]/g,'')) : NaN;
+    if(isNaN(debit) && isNaN(credit)) continue;
+    parsed.push({
+      txn_date: parseBankDate(dateRaw),
+      narration: String(r[narrCol] || '').trim(),
+      debit_amount: !isNaN(debit) && debit > 0 ? debit : null,
+      credit_amount: !isNaN(credit) && credit > 0 ? credit : null,
+      balance: balanceCol !== -1 ? parseFloat(String(r[balanceCol]).replace(/[^0-9.]/g,'')) || null : null,
+      direction: (!isNaN(debit) && debit > 0) ? 'debit' : 'credit'
+    });
+  }
+  return { rows: parsed };
+}
+
+function parseBankDate(raw){
+  const s = String(raw).trim();
+  // Try DD/MM/YYYY or DD-MM-YYYY first (most Indian bank exports), then fall back to native parsing.
+  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if(m){
+    let [, d, mo, y] = m;
+    if(y.length === 2) y = '20' + y;
+    return `${y}-${mo.padStart(2,'0')}-${d.padStart(2,'0')}`;
+  }
+  const d = new Date(s);
+  if(!isNaN(d.getTime())) return d.toISOString().slice(0,10);
+  return null;
+}
+
+// Matches a debit transaction's narration against the subcontractor list —
+// account-number substring match first (high confidence), then name-token
+// overlap (medium confidence). Returns { subcontractor, confidence } or null.
+function matchSubcontractorToNarration(narration){
+  const norm = normalizeText(narration);
+  const digits = norm.replace(/[^0-9]/g, '');
+  if(digits.length >= 6){
+    for(const sc of state.subcontractors){
+      if(sc.is_active === false) continue;
+      const acct = (sc.bank_account_no || '').replace(/[^0-9]/g, '');
+      if(acct.length >= 6 && digits.includes(acct.slice(-6))){
+        return { subcontractor: sc, confidence: 'high' };
+      }
+    }
+  }
+  let best = null, bestScore = 0;
+  for(const sc of state.subcontractors){
+    if(sc.is_active === false) continue;
+    const nameTokens = normalizeText(sc.name).split(' ').filter(t => t.length > 2);
+    if(!nameTokens.length) continue;
+    const hits = nameTokens.filter(t => norm.includes(t)).length;
+    const score = hits / nameTokens.length;
+    if(score > bestScore){ bestScore = score; best = sc; }
+  }
+  if(best && bestScore >= 0.6) return { subcontractor: best, confidence: bestScore >= 0.9 ? 'high' : 'medium' };
+  return null;
+}
+
+// Matches a credit (incoming) transaction against a project's name or client name.
+function matchProjectToNarration(narration){
+  const norm = normalizeText(narration);
+  for(const p of state.projects){
+    const tokens = normalizeText(p.name).split(' ').filter(t => t.length > 3);
+    if(tokens.some(t => norm.includes(t))) return p;
+    if(p.client_name){
+      const clientTokens = normalizeText(p.client_name).split(' ').filter(t => t.length > 3);
+      if(clientTokens.some(t => norm.includes(t))) return p;
+    }
+  }
+  return null;
+}
+
+async function renderBankReconView(){
+  if(!state.subcontractorsLoaded) await loadSubcontractors();
+  if(state.bankReconStep === 'review'){ await renderBankReviewScreen(); return; }
+  renderBankUploadScreen();
+}
+
+function renderBankUploadScreen(){
+  const main = document.getElementById('main');
+  main.innerHTML = `
+    <div class="proj-header">
+      <div><h1>Bank Reconciliation</h1><div class="meta">Upload a statement, get suggested matches, confirm each one</div></div>
+      <button class="btn tiny" id="goToReviewBtn">📋 Review Queue</button>
+    </div>
+    ${canReconcile() ? `
+      <div class="wo-form" style="max-width:600px;">
+        <h3 class="wo-form-title">Upload Bank Statement</h3>
+        <div class="wo-rate-note">CSV or Excel export from your bank's netbanking. Matching runs automatically against your subcontractors' bank details — nothing posts until you confirm each one.</div>
+        <div class="field"><input type="file" id="bankFileInput" accept=".csv,.xlsx,.xls"></div>
+        <div id="bankUploadStatus"></div>
+      </div>
+    ` : `<div class="locked-note">🔒 Only Owner, PM, or Accounts can import bank statements.</div>`}
+  `;
+  document.getElementById('goToReviewBtn').onclick = async () => { state.bankReconStep = 'review'; await renderBankReconView(); };
+  const fileInput = document.getElementById('bankFileInput');
+  if(fileInput) fileInput.addEventListener('change', handleBankFileUpload);
+}
+
+function handleBankFileUpload(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  const statusEl = document.getElementById('bankUploadStatus');
+  statusEl.innerHTML = `<div class="wo-rate-note">Reading file…</div>`;
+  const isCSV = /\.csv$/i.test(file.name);
+  const reader = new FileReader();
+  reader.onload = async (ev) => {
+    const result = parseBankWorkbook(ev.target.result, isCSV);
+    if(result.error){ statusEl.innerHTML = `<div class="locked-note">⚠ ${escapeHtml(result.error)}</div>`; return; }
+    if(!result.rows.length){ statusEl.innerHTML = `<div class="locked-note">⚠ No transaction rows found in this file.</div>`; return; }
+    statusEl.innerHTML = `<div class="wo-rate-note">Found ${result.rows.length} transactions. Matching against ${state.subcontractors.length} subcontractors…</div>`;
+    const batchId = crypto.randomUUID();
+    const rows = result.rows.map(r => {
+      let suggested_subcontractor_id = null, suggested_confidence = null, match_status = 'unmatched';
+      if(r.direction === 'debit'){
+        const m = matchSubcontractorToNarration(r.narration);
+        if(m){ suggested_subcontractor_id = m.subcontractor.id; suggested_confidence = m.confidence; match_status = 'suggested'; }
+      }
+      return { ...r, upload_batch_id: batchId, suggested_subcontractor_id, suggested_confidence, match_status };
+    });
+    try{
+      const { data: { user } } = await withRetry(() => sb.auth.getUser());
+      const payload = rows.map(r => ({ ...r, created_by: user.id }));
+      const { error } = await withRetry(() => sb.from('ra_bank_transactions').insert(payload));
+      if(error){ statusEl.innerHTML = `<div class="locked-note">⚠ ${escapeHtml(error.message)}</div>`; return; }
+      toast(`Imported ${rows.length} transactions.`);
+      state.bankReconStep = 'review';
+      state.bankTxnFilter = 'suggested';
+      await renderBankReconView();
+    } catch(err){ statusEl.innerHTML = `<div class="locked-note">⚠ Could not reach the server.</div>`; console.error(err); }
+  };
+  if(isCSV) reader.readAsBinaryString(file); else reader.readAsArrayBuffer(file);
+}
+
+async function loadBankTransactions(){
+  try{
+    let query = sb.from('ra_bank_transactions').select('*, ra_subcontractors(name, acct_code)').order('txn_date', { ascending: false });
+    if(state.bankTxnFilter === 'unmatched') query = query.eq('match_status', 'unmatched').eq('flagged_for_qs', false);
+    else if(state.bankTxnFilter === 'suggested') query = query.eq('match_status', 'suggested');
+    else if(state.bankTxnFilter === 'confirmed') query = query.eq('match_status', 'confirmed');
+    else if(state.bankTxnFilter === 'flagged') query = query.eq('flagged_for_qs', true);
+    const { data, error } = await withRetry(() => query);
+    if(error){ toast(error.message, true); state.bankTxns = []; return; }
+    state.bankTxns = data || [];
+  } catch(err){ toast('Could not load transactions — please try again.', true); console.error(err); state.bankTxns = []; }
+}
+
+async function renderBankReviewScreen(){
+  const main = document.getElementById('main');
+  main.innerHTML = `<div class="loading">Loading transactions…</div>`;
+  await loadBankTransactions();
+
+  const filterTabs = [
+    { key: 'suggested', label: 'Suggested' },
+    { key: 'unmatched', label: 'Unmatched' },
+    { key: 'flagged', label: 'Flagged for QS' },
+    { key: 'confirmed', label: 'Confirmed' }
+  ];
+
+  main.innerHTML = `
+    <div class="proj-header">
+      <div><h1>Bank Reconciliation</h1><div class="meta">Review &amp; confirm imported transactions</div></div>
+      <button class="btn tiny" id="backToUploadBtn">← Upload Another Statement</button>
+    </div>
+    <div class="proj-subnav" style="display:flex; flex-direction:row; gap:6px; width:fit-content; margin-bottom:14px;">
+      ${filterTabs.map(t => `<button class="proj-subnav-btn ${state.bankTxnFilter===t.key?'active':''}" data-filter="${t.key}" style="width:auto;">${t.label}</button>`).join('')}
+    </div>
+    <div id="bankTxnList"></div>
+  `;
+  document.getElementById('backToUploadBtn').onclick = () => { state.bankReconStep = 'upload'; renderBankReconView(); };
+  main.querySelectorAll('[data-filter]').forEach(btn => {
+    btn.onclick = async () => { state.bankTxnFilter = btn.dataset.filter; await renderBankReviewScreen(); };
+  });
+
+  const listEl = document.getElementById('bankTxnList');
+  const canAct = state.bankTxnFilter === 'flagged' ? canResolveFlagged() : canReconcile();
+  if(!state.bankTxns.length){
+    listEl.innerHTML = `<div class="empty-state" style="height:auto;padding:50px 0;"><div class="big">Nothing here</div><div>No transactions in this view.</div></div>`;
+    return;
+  }
+  state.bankTxns.forEach(txn => {
+    const card = document.createElement('div');
+    card.className = 'wo-form';
+    card.style.marginBottom = '12px';
+    const amt = txn.direction === 'debit' ? txn.debit_amount : txn.credit_amount;
+    const sc = txn.ra_subcontractors;
+    card.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:14px;">
+        <div>
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#8B8676;">${txn.txn_date} · ${txn.direction === 'debit' ? 'Debit (out)' : 'Credit (in)'}</div>
+          <div style="font-size:13px; margin-top:3px;">${escapeHtml(txn.narration)}</div>
+          ${txn.flagged_for_qs && txn.flag_note ? `<div class="wo-rate-note">Flag note: ${escapeHtml(txn.flag_note)}</div>` : ''}
+        </div>
+        <div style="font-family:'IBM Plex Mono',monospace; font-weight:700; font-size:16px; white-space:nowrap;">₹${fmtNum(amt)}</div>
+      </div>
+      ${txn.match_status === 'suggested' && sc ? `
+        <div class="locked-note" style="margin-top:10px;">
+          Suggested match: <strong>${escapeHtml(sc.name)}</strong> (${escapeHtml(sc.acct_code)}) — ${txn.suggested_confidence} confidence
+        </div>
+      ` : ''}
+      ${txn.match_status === 'confirmed' ? `<div class="locked-note" style="color:var(--green);">✓ Confirmed and posted</div>` : ''}
+      ${canAct && txn.match_status !== 'confirmed' ? `<div id="actions-${txn.id}" class="bank-txn-actions"></div>` : ''}
+    `;
+    listEl.appendChild(card);
+    if(canAct && txn.match_status !== 'confirmed'){
+      renderBankTxnActions(document.getElementById(`actions-${txn.id}`), txn);
+    }
+  });
+}
+
+function renderBankTxnActions(el, txn){
+  const isDebit = txn.direction === 'debit';
+  const sc = txn.ra_subcontractors;
+  el.innerHTML = `
+    <div class="wo-form-grid" style="margin-top:10px;">
+      ${isDebit ? `
+        <div class="field"><label>Type</label>
+          <select class="txn-type">
+            ${txn.match_status === 'suggested' ? `<option value="subcontractor" selected>Subcontractor Payment (${sc?escapeHtml(sc.name):''})</option>` : `<option value="subcontractor">Subcontractor Payment</option>`}
+            <option value="expense">Expense (materials/site/other)</option>
+            <option value="ignore">Ignore (bank charges, internal transfer)</option>
+          </select>
+        </div>
+      ` : `
+        <div class="field"><label>Type</label>
+          <select class="txn-type">
+            <option value="receipt">Client Receipt</option>
+            <option value="ignore">Ignore (internal transfer, refund)</option>
+          </select>
+        </div>
+      `}
+      <div class="field txn-project-field"><label>Project</label>
+        <select class="txn-project"><option value="">Select project</option>${state.projects.map(p=>`<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('')}</select>
+      </div>
+      <div class="field txn-category-field" style="display:none;"><label>Category</label>
+        <select class="txn-category">
+          ${Object.entries(EXPENSE_CATEGORY_LABELS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field txn-vendor-field" style="display:none;"><label>Vendor / Payee name</label><input class="txn-vendor" placeholder="e.g. ABC Cement Suppliers"></div>
+      <div class="field txn-paytype-field"><label>Payment Type</label>
+        <select class="txn-paytype">
+          <option value="against_ra_bill">Against RA Bill</option>
+          <option value="advance">Advance</option>
+          <option value="retention_release">Retention Release</option>
+          <option value="final_settlement">Final Settlement</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-actions" style="margin-top:10px; justify-content:flex-start;">
+      <button class="btn primary txn-confirm-btn">✓ Confirm &amp; Post</button>
+      ${isDebit ? `<button class="btn txn-flag-btn" style="color:var(--amber);">🚩 Flag for Mukesh</button>` : ''}
+    </div>
+  `;
+  const typeSelect = el.querySelector('.txn-type');
+  const projectField = el.querySelector('.txn-project-field');
+  const categoryField = el.querySelector('.txn-category-field');
+  const vendorField = el.querySelector('.txn-vendor-field');
+  const paytypeField = el.querySelector('.txn-paytype-field');
+  const updateFields = () => {
+    const t = typeSelect.value;
+    projectField.style.display = (t === 'ignore') ? 'none' : 'block';
+    categoryField.style.display = (t === 'expense') ? 'block' : 'none';
+    vendorField.style.display = (t === 'expense') ? 'block' : 'none';
+    paytypeField.style.display = (t === 'subcontractor') ? 'block' : 'none';
+  };
+  typeSelect.addEventListener('change', updateFields);
+  updateFields();
+
+  el.querySelector('.txn-confirm-btn').onclick = async () => {
+    const type = typeSelect.value;
+    const projectId = el.querySelector('.txn-project')?.value;
+    if(type !== 'ignore' && !projectId){ toast('Select a project.', true); return; }
+    const btn = el.querySelector('.txn-confirm-btn');
+    btn.disabled = true; btn.textContent = 'Posting…';
+    let ok = false;
+    if(type === 'subcontractor'){
+      const subcontractorId = txn.suggested_subcontractor_id;
+      if(!subcontractorId){ toast('No subcontractor matched — pick "Expense" instead, or match manually from the Subcontractor ledger.', true); btn.disabled=false; btn.textContent='✓ Confirm & Post'; return; }
+      ok = await postBankTxnAsPayment(txn, subcontractorId, projectId, el.querySelector('.txn-paytype').value);
+    } else if(type === 'expense'){
+      ok = await postBankTxnAsExpense(txn, projectId, el.querySelector('.txn-category').value, el.querySelector('.txn-vendor').value.trim());
+    } else if(type === 'receipt'){
+      ok = await postBankTxnAsReceipt(txn, projectId);
+    } else if(type === 'ignore'){
+      ok = await markBankTxnIgnored(txn);
+    }
+    if(ok){ await renderBankReviewScreen(); return; }
+    btn.disabled = false; btn.textContent = '✓ Confirm & Post';
+  };
+  const flagBtn = el.querySelector('.txn-flag-btn');
+  if(flagBtn) flagBtn.onclick = async () => {
+    const note = prompt('What should Mukesh check about this transaction?', '');
+    if(note === null) return;
+    const { error } = await withRetry(() => sb.from('ra_bank_transactions').update({ flagged_for_qs: true, flag_note: note.trim() || null }).eq('id', txn.id));
+    if(error){ toast(error.message, true); return; }
+    toast('Flagged for QS review.');
+    await renderBankReviewScreen();
+  };
+}
+
+async function postBankTxnAsPayment(txn, subcontractorId, projectId, paymentType){
+  try{
+    const { data: { user } } = await withRetry(() => sb.auth.getUser());
+    const { data: payment, error } = await withRetry(() => sb.from('ra_payments').insert({
+      subcontractor_id: subcontractorId, amount_paid: txn.debit_amount, date_paid: txn.txn_date,
+      project_id: projectId, payment_type: paymentType, bank_transaction_id: txn.id, entered_by: user.id
+    }).select().single());
+    if(error){ toast(error.message, true); return false; }
+    await withRetry(() => sb.from('ra_bank_transactions').update({
+      match_status: 'confirmed', posted_payment_id: payment.id, confirmed_by: user.id, confirmed_at: new Date().toISOString()
+    }).eq('id', txn.id));
+    toast('Posted to subcontractor ledger.');
+    return true;
+  } catch(err){ toast('Could not reach the server — please try again.', true); console.error(err); return false; }
+}
+
+async function postBankTxnAsExpense(txn, projectId, category, vendorName){
+  try{
+    const { data: { user } } = await withRetry(() => sb.auth.getUser());
+    const { data: expense, error } = await withRetry(() => sb.from('ra_expenses').insert({
+      project_id: projectId, category, vendor_name: vendorName || null, amount: txn.debit_amount,
+      expense_date: txn.txn_date, bank_transaction_id: txn.id, created_by: user.id
+    }).select().single());
+    if(error){ toast(error.message, true); return false; }
+    await withRetry(() => sb.from('ra_bank_transactions').update({
+      match_status: 'confirmed', posted_expense_id: expense.id, confirmed_by: user.id, confirmed_at: new Date().toISOString()
+    }).eq('id', txn.id));
+    toast('Posted as expense.');
+    return true;
+  } catch(err){ toast('Could not reach the server — please try again.', true); console.error(err); return false; }
+}
+
+async function postBankTxnAsReceipt(txn, projectId){
+  try{
+    const { data: { user } } = await withRetry(() => sb.auth.getUser());
+    const { data: receipt, error } = await withRetry(() => sb.from('ra_client_receipts').insert({
+      project_id: projectId, amount: txn.credit_amount, receipt_date: txn.txn_date, bank_transaction_id: txn.id, created_by: user.id
+    }).select().single());
+    if(error){ toast(error.message, true); return false; }
+    await withRetry(() => sb.from('ra_bank_transactions').update({
+      match_status: 'confirmed', posted_receipt_id: receipt.id, confirmed_by: user.id, confirmed_at: new Date().toISOString()
+    }).eq('id', txn.id));
+    toast('Posted as client receipt.');
+    return true;
+  } catch(err){ toast('Could not reach the server — please try again.', true); console.error(err); return false; }
+}
+
+async function markBankTxnIgnored(txn){
+  try{
+    const { data: { user } } = await withRetry(() => sb.auth.getUser());
+    const { error } = await withRetry(() => sb.from('ra_bank_transactions').update({
+      match_status: 'ignored', confirmed_by: user.id, confirmed_at: new Date().toISOString()
+    }).eq('id', txn.id));
+    if(error){ toast(error.message, true); return false; }
+    toast('Marked as ignored.');
+    return true;
+  } catch(err){ toast('Could not reach the server — please try again.', true); console.error(err); return false; }
 }
 
 /* ============================================================================
