@@ -617,6 +617,7 @@ let state = {
   dlrDate: new Date().toISOString().slice(0,10),
   dlrEntries: [],
   dlrSubmissionStrip: {},
+  dlrDayStatus: null,
   showWOBin: false,
   woBinList: [],
   editingWOId: null,
@@ -1042,7 +1043,7 @@ function renderHomeDashboard(){
     let dlrToday = new Set();
     try{
       const todayStr = new Date().toISOString().slice(0,10);
-      const { data, error } = await withRetry(() => sb.from('ra_dlr_entries').select('project_id').eq('entry_date', todayStr));
+      const { data, error } = await withRetry(() => sb.from('ra_dlr_day_status').select('project_id').eq('entry_date', todayStr));
       if(!error) (data||[]).forEach(r => dlrToday.add(r.project_id));
     } catch(err){ console.error(err); }
 
@@ -1052,7 +1053,7 @@ function renderHomeDashboard(){
       const dlrEl = document.querySelector(`#home-card-${p.id} .home-card-dlr`);
       if(dlrEl) dlrEl.innerHTML = dlrToday.has(p.id)
         ? `<span class="lock-badge" style="background:rgba(63,143,99,0.12);color:var(--green);">✓ DLR submitted today</span>`
-        : `<span class="lock-badge lock-badge-own">⚠ No DLR today</span>`;
+        : `<span class="lock-badge lock-badge-own">⚠ DLR not submitted today</span>`;
     });
 
     const totalBudgetAll = Object.values(summaries).reduce((s,x) => s + Number(x.total_budget_value||0), 0);
@@ -3005,14 +3006,15 @@ async function loadDLREntries(projectId, date){
   } catch(err){ toast('Could not load Daily Labour Report — please try again.', true); console.error(err); state.dlrEntries = []; }
 }
 
-// Last 7 days' submission status for this project — the "did anyone forget
-// to submit today" strip.
+// Last 7 days' submission status for this project — now based on the
+// explicit day-status confirmation, not just "some row happens to exist,"
+// which is a more accurate signal of an actually-completed day.
 async function loadDLRSubmissionStrip(projectId){
   try{
     const since = new Date(); since.setDate(since.getDate() - 6);
     const sinceStr = since.toISOString().slice(0,10);
     const { data, error } = await withRetry(() =>
-      sb.from('ra_dlr_entries').select('entry_date').eq('project_id', projectId).gte('entry_date', sinceStr)
+      sb.from('ra_dlr_day_status').select('entry_date').eq('project_id', projectId).gte('entry_date', sinceStr)
     );
     if(error){ console.error(error); state.dlrSubmissionStrip = {}; return; }
     const set = new Set((data||[]).map(r => r.entry_date));
@@ -3026,12 +3028,36 @@ async function loadDLRSubmissionStrip(projectId){
   } catch(err){ console.error(err); state.dlrSubmissionStrip = {}; }
 }
 
+async function loadDLRDayStatus(projectId, date){
+  try{
+    const { data, error } = await withRetry(() =>
+      sb.from('ra_dlr_day_status').select('*').eq('project_id', projectId).eq('entry_date', date).maybeSingle()
+    );
+    if(error){ console.error(error); state.dlrDayStatus = null; return; }
+    state.dlrDayStatus = data || null;
+  } catch(err){ console.error(err); state.dlrDayStatus = null; }
+}
+
+async function submitDLRDay(project){
+  if(!state.dlrEntries.length){ toast('Add at least one subcontractor before submitting.', true); return; }
+  try{
+    const payload = { project_id: project.id, entry_date: state.dlrDate, submitted_by: session.user.id, submitted_at: new Date().toISOString() };
+    const { data, error } = await withRetry(() => sb.from('ra_dlr_day_status').upsert(payload, { onConflict: 'project_id,entry_date' }).select().single());
+    if(error){ toast(error.message, true); return; }
+    state.dlrDayStatus = data;
+    toast(`DLR for ${state.dlrDate} submitted.`);
+    await loadDLRSubmissionStrip(project.id);
+    renderDLRTab(project);
+  } catch(err){ toast('Could not reach the server — please try again.', true); console.error(err); }
+}
+
 async function renderDLRTab(project){
   const tabContent = document.getElementById('tabContent');
   tabContent.innerHTML = `<div class="loading">Loading Daily Labour Report…</div>`;
-  await Promise.all([loadDLREntries(project.id, state.dlrDate), loadDLRSubmissionStrip(project.id)]);
+  await Promise.all([loadDLREntries(project.id, state.dlrDate), loadDLRSubmissionStrip(project.id), loadDLRDayStatus(project.id, state.dlrDate)]);
 
   const stripEntries = Object.entries(state.dlrSubmissionStrip);
+  const submitted = state.dlrDayStatus;
   tabContent.innerHTML = `
     ${!canEnterDLR() ? `<div class="locked-note">🔒 Signed in as ${myRole.toUpperCase()} — DLR is entered by Owner, PM, or QS. You can review here.</div>` : ''}
     <div class="dlr-strip">
@@ -3042,6 +3068,11 @@ async function renderDLRTab(project){
       }).join('')}
     </div>
 
+    ${submitted
+      ? `<div class="locked-note" style="color:var(--green);border-color:rgba(63,143,99,0.35);background:rgba(63,143,99,0.08);">✓ Submitted for ${state.dlrDate} by ${submitted.submitted_by === session.user.id ? 'you' : 'a teammate'} at ${new Date(submitted.submitted_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}. You can still edit below — it stays marked submitted.</div>`
+      : `<div class="locked-note">⚠ Not yet submitted for ${state.dlrDate}. Rows auto-save as you type, but nothing confirms the day is complete until you submit.</div>`
+    }
+
     <div class="toolbar">
       <div class="field" style="max-width:200px; margin:0;"><input type="date" id="dlrDatePicker" value="${state.dlrDate}"></div>
       <button class="btn tiny" id="dlrExportCsvBtn">⬇ CSV</button>
@@ -3051,6 +3082,11 @@ async function renderDLRTab(project){
 
     <div id="dlrGridWrap"></div>
     ${canEnterDLR() ? `<div id="dlrAddRow" style="margin-top:10px;"></div>` : ''}
+    ${canEnterDLR() ? `
+      <div class="modal-actions" style="margin-top:16px; justify-content:flex-start;">
+        <button class="btn primary" id="dlrSubmitBtn">${submitted ? '✓ Re-submit DLR for '+state.dlrDate : 'Submit DLR for '+state.dlrDate}</button>
+      </div>
+    ` : ''}
   `;
 
   document.getElementById('dlrDatePicker').addEventListener('change', async (e) => {
@@ -3060,6 +3096,8 @@ async function renderDLRTab(project){
   main_dlrWireStripClicks(project);
   document.getElementById('dlrExportCsvBtn').onclick = () => exportDLRCsv(project);
   document.getElementById('dlrPrintBtn').onclick = () => printDLR(project);
+  const submitBtn = document.getElementById('dlrSubmitBtn');
+  if(submitBtn) submitBtn.onclick = () => submitDLRDay(project);
 
   renderDLRGrid(project);
   if(canEnterDLR()) renderDLRAddRow(project);
