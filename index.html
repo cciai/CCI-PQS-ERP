@@ -664,7 +664,7 @@ async function doLogin(){
     if(error){ errEl.textContent = error.message; errEl.style.display = 'block'; return; }
 
     session = data.session;
-    await loadMyRole();
+    await loadMyRole(session.user.id);
     if(!myRole){
       errEl.textContent = 'Signed in, but no role is assigned to this account yet. Ask Jonathan to add you in ra_user_roles.';
       errEl.style.display = 'block';
@@ -682,12 +682,11 @@ async function doLogin(){
   }
 }
 
-async function loadMyRole(){
+async function loadMyRole(userId){
   try{
-    const { data: { user } } = await withRetry(() => sb.auth.getUser());
-    if(!user) return;
+    if(!userId) return;
     const { data, error } = await withRetry(() =>
-      sb.from('ra_user_roles').select('role, full_name').eq('user_id', user.id).maybeSingle()
+      sb.from('ra_user_roles').select('role, full_name').eq('user_id', userId).maybeSingle()
     );
     if(error){ console.error(error); return; }
     if(data){ myRole = data.role; myName = data.full_name; }
@@ -748,7 +747,7 @@ function canResolveFlagged(){ return myRole === 'owner' || myRole === 'pm' || my
     const { data } = await withRetry(() => sb.auth.getSession());
     if(data.session){
       session = data.session;
-      await loadMyRole();
+      await loadMyRole(session.user.id);
       if(myRole) showApp();
     }
   } catch(err){
@@ -809,7 +808,7 @@ async function loadProjectDetail(projectId){
     else { state.budgetSummary = summary || null; }
 
     await loadWorkOrders(projectId);
-    if((state.activeTab === 'workorders' || state.activeTab === 'bills') && !state.subcontractorsLoaded) await loadSubcontractors();
+    if((state.activeTab === 'workorders' || state.activeTab === 'dlr') && !state.subcontractorsLoaded) await loadSubcontractors();
     if(state.activeTab === 'bills'){
       state.viewingWOId = null; state.currentBillId = null; state.showBin = false;
       await loadAllBills(projectId);
@@ -1101,7 +1100,7 @@ function renderProjectSubNav(){
       state.woListPage = 1;
       state.billListPage = 1;
       state.showWOBin = false;
-      if((state.activeTab === 'workorders' || state.activeTab === 'bills' || state.activeTab === 'dlr') && !state.subcontractorsLoaded) await loadSubcontractors();
+      if((state.activeTab === 'workorders' || state.activeTab === 'dlr') && !state.subcontractorsLoaded) await loadSubcontractors();
       if(state.activeTab === 'bills'){
         state.showBin = false;
         if(state.billsCacheProjectId !== project.id){
@@ -3046,6 +3045,8 @@ async function renderDLRTab(project){
     <div class="toolbar">
       <div class="field" style="max-width:200px; margin:0;"><input type="date" id="dlrDatePicker" value="${state.dlrDate}"></div>
       <button class="btn tiny" id="dlrExportCsvBtn">⬇ CSV</button>
+      <button class="btn tiny" id="dlrPrintBtn">🖨 PDF</button>
+      <span class="pg-status" id="dlrSavedLabel"></span>
     </div>
 
     <div id="dlrGridWrap"></div>
@@ -3058,6 +3059,7 @@ async function renderDLRTab(project){
   });
   main_dlrWireStripClicks(project);
   document.getElementById('dlrExportCsvBtn').onclick = () => exportDLRCsv(project);
+  document.getElementById('dlrPrintBtn').onclick = () => printDLR(project);
 
   renderDLRGrid(project);
   if(canEnterDLR()) renderDLRAddRow(project);
@@ -3091,8 +3093,10 @@ function renderDLRGrid(project){
 
     const tr = document.createElement('tr');
     tr.dataset.entryId = entry.id;
+    if(entry.updated_at) tr.title = `Last saved ${new Date(entry.updated_at).toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'})} on ${new Date(entry.updated_at).toLocaleDateString('en-IN')}`;
     const sc = entry.ra_subcontractors || {};
-    const cells = [`<td>${escapeHtml(sc.name||'')} <span class="u">${escapeHtml(sc.acct_code||'')}</span></td>`];
+    const savedTime = entry.updated_at ? new Date(entry.updated_at).toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'}) : '';
+    const cells = [`<td>${escapeHtml(sc.name||'')} <span class="u">${escapeHtml(sc.acct_code||'')}</span>${savedTime ? `<div class="wo-line-path">⏱ ${savedTime}</div>` : ''}</td>`];
     DLR_TRADE_FIELDS.forEach(f => {
       cells.push(`<td>${editable ? `<input type="number" inputmode="numeric" min="0" class="dlr-cell" data-field="${f.key}" value="${entry[f.key]||''}">` : (entry[f.key]||0)}</td>`);
     });
@@ -3141,29 +3145,52 @@ function wireDLRRowInputs(project){
 
 async function commitDLREntry(entry, project){
   try{
-    const { data: { user } } = await withRetry(() => sb.auth.getUser());
-    const payload = { project_id: entry.project_id, subcontractor_id: entry.subcontractor_id, entry_date: entry.entry_date, created_by: user.id };
+    const payload = { project_id: entry.project_id, subcontractor_id: entry.subcontractor_id, entry_date: entry.entry_date, created_by: session.user.id };
     DLR_TRADE_FIELDS.forEach(f => payload[f.key] = entry[f.key] || 0);
     payload.others_count = entry.others_count || 0;
     payload.others_label = entry.others_label || null;
     payload.updated_at = new Date().toISOString();
-    const { error } = await withRetry(() => sb.from('ra_dlr_entries').upsert(payload, { onConflict: 'project_id,subcontractor_id,entry_date' }));
+    const { data, error } = await withRetry(() => sb.from('ra_dlr_entries').upsert(payload, { onConflict: 'project_id,subcontractor_id,entry_date' }).select().single());
     if(error){ toast(error.message, true); return; }
+    entry.id = data.id;
+    entry.updated_at = data.updated_at;
+    updateDLRSavedLabel(data.updated_at);
+    const row = document.querySelector(`#dlrGridWrap tr[data-entry-id="${entry.id}"]`);
+    if(row) row.title = `Last saved ${new Date(data.updated_at).toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'})}`;
     await loadDLRSubmissionStrip(project.id);
     main_dlrWireStripClicks(project);
   } catch(err){ toast('Could not save — please try again.', true); console.error(err); }
 }
 
+function updateDLRSavedLabel(isoTime){
+  const el = document.getElementById('dlrSavedLabel');
+  if(!el) return;
+  const t = new Date(isoTime).toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  el.textContent = `Last saved ${t}`;
+}
+
 async function deleteDLREntry(entry, project){
   if(entry.id && !confirm(`Remove ${entry.ra_subcontractors ? entry.ra_subcontractors.name : 'this'} from today's DLR?`)) return;
   state.dlrEntries = state.dlrEntries.filter(e => e !== entry);
+  renderDLRGrid(project); // update the screen immediately — don't wait on the network call
   if(entry.id){
     try{
       const { error } = await withRetry(() => sb.from('ra_dlr_entries').delete().eq('id', entry.id));
-      if(error){ toast(error.message, true); return; }
-    } catch(err){ toast('Could not reach the server — please try again.', true); console.error(err); return; }
+      if(error){
+        toast(error.message, true);
+        state.dlrEntries.push(entry); // restore on failure
+        renderDLRGrid(project);
+        return;
+      }
+      await loadDLRSubmissionStrip(project.id);
+      main_dlrWireStripClicks(project);
+    } catch(err){
+      toast('Could not reach the server — the row has been restored.', true);
+      console.error(err);
+      state.dlrEntries.push(entry);
+      renderDLRGrid(project);
+    }
   }
-  renderDLRGrid(project);
 }
 
 function renderDLRAddRow(project){
@@ -3220,6 +3247,37 @@ function exportDLRCsv(project){
   });
   downloadCSV(`CCI DLR ${project.name} ${state.dlrDate}.csv`,
     ['Subcontractor','Acct Code',...DLR_TRADE_FIELDS.map(f=>f.label),'Others #','Others Label','Total'], rows);
+}
+
+function printDLR(project){
+  if(!state.dlrEntries.length){ toast('No labour entered for this date — nothing to print.', true); return; }
+  const rows = state.dlrEntries.map(e => {
+    const sc = e.ra_subcontractors || {};
+    const row = { 'Subcontractor': sc.name || '', 'Acct Code': sc.acct_code || '' };
+    DLR_TRADE_FIELDS.forEach(f => row[f.label] = e[f.key] || 0);
+    row['Others'] = e.others_count ? `${e.others_count}${e.others_label ? ' ('+e.others_label+')' : ''}` : '—';
+    row['Total'] = dlrRowTotal(e);
+    return row;
+  });
+  const totals = {}; DLR_TRADE_FIELDS.forEach(f => totals[f.label] = 0);
+  let grandTotal = 0;
+  state.dlrEntries.forEach(e => {
+    DLR_TRADE_FIELDS.forEach(f => totals[f.label] += Number(e[f.key])||0);
+    grandTotal += dlrRowTotal(e);
+  });
+  const totalRow = { 'Subcontractor': 'TOTAL', 'Acct Code': '' };
+  DLR_TRADE_FIELDS.forEach(f => totalRow[f.label] = totals[f.label]);
+  totalRow['Others'] = '';
+  totalRow['Total'] = grandTotal;
+  rows.push(totalRow);
+
+  printTable(
+    `${project.name} — Daily Labour Report`,
+    `${state.dlrDate} · ${state.dlrEntries.length} subcontractor${state.dlrEntries.length!==1?'s':''} · ${grandTotal} workers total`,
+    ['Subcontractor','Acct Code',...DLR_TRADE_FIELDS.map(f=>f.label),'Others','Total'],
+    rows,
+    `CCI DLR ${project.name} ${state.dlrDate}`
+  );
 }
 
 function renderWorkOrdersTab(project){
