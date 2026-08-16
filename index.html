@@ -165,6 +165,20 @@
 
   /* Excel-style data tables (Work Orders / Bills lists) */
   .data-table{ width:100%; border-collapse:collapse; font-size:12.5px; background:#fff; border-radius:10px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.06); }
+
+  .dlr-strip{ display:flex; gap:6px; margin-bottom:16px; flex-wrap:wrap; }
+  .dlr-strip-day{
+    display:flex; flex-direction:column; align-items:center; gap:2px;
+    border:1px solid var(--paper-line); border-radius:8px; padding:6px 10px; background:#fff;
+    font-family:'IBM Plex Mono',monospace; font-size:9.5px; cursor:pointer; min-width:56px;
+  }
+  .dlr-strip-day.ok{ color:var(--green); border-color:rgba(63,143,99,0.35); }
+  .dlr-strip-day.missing{ color:var(--red); border-color:rgba(193,69,58,0.35); background:rgba(193,69,58,0.05); }
+  .dlr-strip-day.selected{ box-shadow:0 0 0 2px var(--amber); }
+  .dlr-table td, .dlr-table th{ text-align:center; }
+  .dlr-table td:first-child, .dlr-table th:first-child{ text-align:left; }
+  .dlr-cell{ width:56px; padding:4px 5px; border:1px solid var(--paper-line); border-radius:5px; font-size:12px; text-align:center; font-family:'Inter',sans-serif; }
+  .dlr-table td:nth-last-child(3) .dlr-cell{ width:120px; text-align:left; }
   .data-table thead th{
     background:#F6F4EE; text-align:left; padding:9px 10px; font-family:'IBM Plex Mono',monospace;
     font-size:9.5px; text-transform:uppercase; letter-spacing:.05em; color:#8B8676; border-bottom:1px solid var(--paper-line);
@@ -599,6 +613,10 @@ let state = {
   showBin: false,
   woListPage: 1,
   billListPage: 1,
+  billsCacheProjectId: null,
+  dlrDate: new Date().toISOString().slice(0,10),
+  dlrEntries: [],
+  dlrSubmissionStrip: {},
   showWOBin: false,
   woBinList: [],
   editingWOId: null,
@@ -792,7 +810,11 @@ async function loadProjectDetail(projectId){
 
     await loadWorkOrders(projectId);
     if((state.activeTab === 'workorders' || state.activeTab === 'bills') && !state.subcontractorsLoaded) await loadSubcontractors();
-    if(state.activeTab === 'bills'){ state.viewingWOId = null; state.currentBillId = null; state.showBin = false; await loadAllBills(projectId); }
+    if(state.activeTab === 'bills'){
+      state.viewingWOId = null; state.currentBillId = null; state.showBin = false;
+      await loadAllBills(projectId);
+      state.billsCacheProjectId = projectId;
+    }
 
     state.loading = false;
     renderProjectSubNav();
@@ -878,6 +900,10 @@ function renderMain(){
     main.innerHTML = `${renderProjectHeader(project)}<div id="tabContent"></div>`;
     wireProjectHeaderActions(project);
     renderBillsTab(project);
+  } else if(state.activeTab === 'dlr'){
+    main.innerHTML = `${renderProjectHeader(project)}<div id="tabContent"></div>`;
+    wireProjectHeaderActions(project);
+    renderDLRTab(project);
   } else {
     main.innerHTML = `${renderProjectHeader(project)}<div id="tabContent"></div>`;
     wireProjectHeaderActions(project);
@@ -998,6 +1024,7 @@ function renderHomeDashboard(){
         <div><span class="qv-label">Billed</span><br><span class="home-card-billed">…</span></div>
       </div>
       <div class="bd-bar-track" style="margin-top:8px;"><div class="bd-bar-fill home-card-bar" style="width:0%"></div></div>
+      <div class="home-card-dlr"></div>
     `;
     card.onclick = () => loadProjectDetail(p.id);
     grid.appendChild(card);
@@ -1013,7 +1040,21 @@ function renderHomeDashboard(){
       if(!error) (data||[]).forEach(s => { summaries[s.project_id] = s; });
     } catch(err){ console.error(err); }
 
+    let dlrToday = new Set();
+    try{
+      const todayStr = new Date().toISOString().slice(0,10);
+      const { data, error } = await withRetry(() => sb.from('ra_dlr_entries').select('project_id').eq('entry_date', todayStr));
+      if(!error) (data||[]).forEach(r => dlrToday.add(r.project_id));
+    } catch(err){ console.error(err); }
+
     if(renderId !== state.homeDashboardRenderId) return; // a newer render has since taken over
+
+    state.projects.forEach(p => {
+      const dlrEl = document.querySelector(`#home-card-${p.id} .home-card-dlr`);
+      if(dlrEl) dlrEl.innerHTML = dlrToday.has(p.id)
+        ? `<span class="lock-badge" style="background:rgba(63,143,99,0.12);color:var(--green);">✓ DLR submitted today</span>`
+        : `<span class="lock-badge lock-badge-own">⚠ No DLR today</span>`;
+    });
 
     const totalBudgetAll = Object.values(summaries).reduce((s,x) => s + Number(x.total_budget_value||0), 0);
     const totalBilledAll = Object.values(summaries).reduce((s,x) => s + Number(x.total_billed_value||0), 0);
@@ -1049,6 +1090,7 @@ function renderProjectSubNav(){
       <button class="proj-subnav-btn ${state.activeTab==='budget'&&!state.viewingWOId?'active':''}" data-sec="budget">Budget</button>
       <button class="proj-subnav-btn ${state.activeTab==='workorders'?'active':''}" data-sec="workorders">Work Orders${state.workOrders.length ? ` (${state.workOrders.length})` : ''}</button>
       <button class="proj-subnav-btn ${state.activeTab==='bills'?'active':''}" data-sec="bills">Bills</button>
+      <button class="proj-subnav-btn ${state.activeTab==='dlr'?'active':''}" data-sec="dlr">Daily Labour</button>
     </div>
   `;
   el.querySelectorAll('.proj-subnav-btn').forEach(btn => {
@@ -1059,8 +1101,14 @@ function renderProjectSubNav(){
       state.woListPage = 1;
       state.billListPage = 1;
       state.showWOBin = false;
-      if((state.activeTab === 'workorders' || state.activeTab === 'bills') && !state.subcontractorsLoaded) await loadSubcontractors();
-      if(state.activeTab === 'bills'){ state.showBin = false; await loadAllBills(project.id); }
+      if((state.activeTab === 'workorders' || state.activeTab === 'bills' || state.activeTab === 'dlr') && !state.subcontractorsLoaded) await loadSubcontractors();
+      if(state.activeTab === 'bills'){
+        state.showBin = false;
+        if(state.billsCacheProjectId !== project.id){
+          await loadAllBills(project.id);
+          state.billsCacheProjectId = project.id;
+        }
+      }
       renderProjectSubNav();
       renderMain();
     };
@@ -2195,9 +2243,6 @@ async function loadBillEntry(billId, woId){
       state.billLines.forEach(e => { if(prevMap[e.wo_line_item_id] !== undefined) prevMap[e.wo_line_item_id] -= Number(e.this_qty || 0); });
     }
     state.billPrevCumulative = prevMap;
-
-    const { data: payments, error: e4 } = await withRetry(() => sb.from('ra_payments').select('*').eq('bill_id', billId).order('date_paid', { ascending: false }));
-    if(e4){ console.error(e4); state.billPayments = []; } else { state.billPayments = payments || []; }
   } catch(err){ toast('Could not load the bill — please try again.', true); console.error(err); }
 }
 
@@ -2332,6 +2377,7 @@ function renderBillEntry(project){
     if(state.billEntryReturnTo === 'bills'){
       state.viewingWOId = null;
       await loadAllBills(state.selectedProjectId);
+      state.billsCacheProjectId = state.selectedProjectId;
     }
     renderMain();
   };
@@ -2408,6 +2454,7 @@ async function rejectBill(billId){
     }).eq('id', billId));
     if(error){ toast(error.message, true); return; }
     toast('Bill rejected and sent back to draft.');
+    state.billsCacheProjectId = null;
     await loadBillEntry(billId, state.woDetail.id);
     renderMain();
   } catch(err){ toast('Could not reach the server — please try again.', true); console.error(err); }
@@ -2537,6 +2584,7 @@ async function deleteBill(bill){
     const { error } = await withRetry(() => sb.from('ra_bills').update({ deleted_at: new Date().toISOString(), deleted_by: user.id }).eq('id', bill.id));
     if(error){ toast(error.message, true); return; }
     toast('Bill moved to Bin.');
+    state.billsCacheProjectId = null;
     state.currentBillId = null;
     state.woBills = state.woBills.filter(b => b.id !== bill.id);
     renderMain();
@@ -2587,6 +2635,7 @@ async function saveBillLines(billId, thenSubmit){
       await submitBill(billId);
     } else {
       toast('Draft saved.');
+      state.billsCacheProjectId = null;
       await loadBillEntry(billId, state.woDetail.id);
       renderMain();
     }
@@ -2598,6 +2647,7 @@ async function submitBill(billId){
     const { error } = await withRetry(() => sb.from('ra_bills').update({ status: 'submitted', submitted_at: new Date().toISOString(), rejection_reason: null }).eq('id', billId));
     if(error){ toast(error.message, true); return; }
     toast('Bill submitted.');
+    state.billsCacheProjectId = null;
     await loadBillEntry(billId, state.woDetail.id);
     renderMain();
   } catch(err){ toast('Could not reach the server — please try again.', true); console.error(err); }
@@ -2609,6 +2659,7 @@ async function approveBill(billId){
     const { error } = await withRetry(() => sb.from('ra_bills').update({ status: 'approved', approved_by: user.id, approved_at: new Date().toISOString() }).eq('id', billId));
     if(error){ toast(error.message, true); return; }
     toast('Bill approved.');
+    state.billsCacheProjectId = null;
     await loadBillEntry(billId, state.woDetail.id);
     renderMain();
   } catch(err){ toast('Could not reach the server — please try again.', true); console.error(err); }
@@ -2636,7 +2687,7 @@ async function loadAllBills(projectId){
   try{
     const { data, error } = await withRetry(() =>
       sb.from('ra_bills')
-        .select('*, ra_work_orders!inner(wo_ref, project_id, retention_pct, tds_pct, safety_pct, safety_amount, gst_pct, ra_subcontractors(name, acct_code)), ra_bill_line_entries(this_qty, ra_wo_line_items(agreed_rate)), ra_payments(amount_paid)')
+        .select('*, ra_work_orders!inner(wo_ref, project_id, retention_pct, tds_pct, safety_pct, safety_amount, gst_pct, ra_subcontractors(name, acct_code)), ra_bill_line_entries(this_qty, ra_wo_line_items(agreed_rate))')
         .eq('ra_work_orders.project_id', projectId)
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
@@ -2647,10 +2698,9 @@ async function loadAllBills(projectId){
       const subTotal = (b.ra_bill_line_entries||[]).reduce((s,e) => s + Number(e.this_qty||0) * Number((e.ra_wo_line_items||{}).agreed_rate||0), 0);
       const deductions = subTotal * ((wo.retention_pct||0)+(wo.tds_pct||0)+(wo.safety_pct||0))/100 + (wo.safety_pct ? 0 : (wo.safety_amount||0)) + Number(b.debit_amount||0);
       const effGstPct = (b.gst_pct !== null && b.gst_pct !== undefined) ? Number(b.gst_pct) : Number(wo.gst_pct||0);
-        const gstAmt = subTotal * effGstPct/100;
+      const gstAmt = subTotal * effGstPct/100;
       const net = subTotal - deductions + gstAmt;
-      const paid = (b.ra_payments||[]).reduce((s,p) => s + Number(p.amount_paid||0), 0);
-      return { ...b, _subTotal: subTotal, _net: net, _paid: paid, _outstanding: net - paid };
+      return { ...b, _subTotal: subTotal, _net: net };
     });
   } catch(err){ toast('Could not load bills — please try again.', true); console.error(err); state.allBills = []; }
 }
@@ -2678,6 +2728,7 @@ async function restoreBill(bill){
     const { error } = await withRetry(() => sb.from('ra_bills').update({ deleted_at: null, deleted_by: null }).eq('id', bill.id));
     if(error){ toast(error.message, true); return; }
     toast('Bill restored.');
+    state.billsCacheProjectId = null;
     state.binBills = state.binBills.filter(b => b.id !== bill.id);
     await loadAllBills(bill.ra_work_orders.project_id);
     renderMain();
@@ -2710,15 +2761,12 @@ function renderBillsTab(project){
   const bills = state.allBills || [];
 
   const totalNet = bills.reduce((s,b) => s + b._net, 0);
-  const totalPaid = bills.reduce((s,b) => s + b._paid, 0);
-  const totalOutstanding = totalNet - totalPaid;
 
   tabContent.innerHTML = `
-    <div class="bill-summary" style="max-width:none; display:grid; grid-template-columns:repeat(3,1fr); gap:16px;">
-      <div class="bill-summary-row" style="flex-direction:column; align-items:flex-start; gap:4px;"><span class="qv-label">Total Net Billed</span><span style="font-size:16px;font-weight:700;">₹${fmtNum(totalNet)}</span></div>
-      <div class="bill-summary-row" style="flex-direction:column; align-items:flex-start; gap:4px;"><span class="qv-label">Total Paid</span><span style="font-size:16px;font-weight:700;color:var(--green);">₹${fmtNum(totalPaid)}</span></div>
-      <div class="bill-summary-row" style="flex-direction:column; align-items:flex-start; gap:4px;"><span class="qv-label">Outstanding</span><span style="font-size:16px;font-weight:700;color:var(--red);">₹${fmtNum(totalOutstanding)}</span></div>
+    <div class="bill-summary" style="max-width:none;">
+      <div class="bill-summary-row" style="flex-direction:column; align-items:flex-start; gap:4px;"><span class="qv-label">Total Net Billed (this project)</span><span style="font-size:16px;font-weight:700;">₹${fmtNum(totalNet)}</span></div>
     </div>
+    <div class="wo-rate-note">Paid amounts and outstanding balances are tracked per subcontractor, not per project — see <strong>Subcontractors → [vendor] → View Ledger</strong> for those figures.</div>
 
     <div class="toolbar" id="billsToolbar">
       <button class="btn primary" id="newBillFromBillsTabBtn" ${!canCreateWO()?'disabled':''}>+ New Bill</button>
@@ -2777,10 +2825,10 @@ function renderBillsTab(project){
       'Bill No': b.bill_no, 'WO Ref': (b.ra_work_orders||{}).wo_ref || '',
       'Subcontractor': ((b.ra_work_orders||{}).ra_subcontractors||{}).name || '',
       'Period From': b.period_from, 'Period To': b.period_to, 'Status': b.status,
-      'Net Payable': b._net.toFixed(2), 'Paid': b._paid.toFixed(2), 'Outstanding': b._outstanding.toFixed(2)
+      'Net Payable': b._net.toFixed(2)
     }));
     downloadCSV(`${project.name.replace(/\s+/g,'_')}_Bills_${new Date().toISOString().slice(0,10)}.csv`,
-      ['Bill No','WO Ref','Subcontractor','Period From','Period To','Status','Net Payable','Paid','Outstanding'], rows);
+      ['Bill No','WO Ref','Subcontractor','Period From','Period To','Status','Net Payable'], rows);
   };
 
   const listEl = document.getElementById('allBillsList');
@@ -2798,7 +2846,7 @@ function renderBillsTab(project){
   table.innerHTML = `
     <thead><tr>
       <th>Bill #</th><th>Subcontractor</th><th>WO Ref</th><th>Period</th>
-      <th>Net</th><th>Paid</th><th>Outstanding</th><th>Status</th><th></th>
+      <th>Net</th><th>Status</th><th></th>
     </tr></thead>
     <tbody>
       ${pageItems.map(b => {
@@ -2812,8 +2860,6 @@ function renderBillsTab(project){
           <td>${escapeHtml(wo.wo_ref||'')}</td>
           <td>${b.period_from||'—'} to ${b.period_to||'—'}</td>
           <td class="num">₹${fmtNum(b._net)}</td>
-          <td class="num">₹${fmtNum(b._paid)}</td>
-          <td class="num" style="color:${b._outstanding>0?'var(--red)':'var(--green)'};">₹${fmtNum(b._outstanding)}</td>
           <td><span class="badge ${b.status==='draft'?'internal':'billable'}">${b.status}</span></td>
           <td class="dt-actions">
             ${b.finalized_at ? `<span class="finalized-chip" title="Finalized ${new Date(b.finalized_at).toLocaleDateString('en-IN')}">🔐 Finalized</span>`
@@ -2936,6 +2982,244 @@ function renderWOBinView(project){
     listEl.appendChild(row);
     document.getElementById(`restore-wo-${wo.id}`).onclick = () => restoreWorkOrder(wo);
   });
+}
+
+function canEnterDLR(){ return canCreateWO(); } // same role set: owner/pm/qs
+
+const DLR_TRADE_FIELDS = [
+  { key: 'carpenter_count', label: 'Carp' },
+  { key: 'carpenter_helper_count', label: 'C.Helper' },
+  { key: 'steel_fitter_count', label: 'Steel Fitter' },
+  { key: 'steel_helper_count', label: 'S.Helper' },
+  { key: 'mason_count', label: 'Mason' },
+  { key: 'male_coolie_count', label: 'MC' },
+  { key: 'female_coolie_count', label: 'FC' }
+];
+
+async function loadDLREntries(projectId, date){
+  try{
+    const { data, error } = await withRetry(() =>
+      sb.from('ra_dlr_entries').select('*, ra_subcontractors(name, acct_code)').eq('project_id', projectId).eq('entry_date', date).order('created_at')
+    );
+    if(error){ toast(error.message, true); state.dlrEntries = []; return; }
+    state.dlrEntries = data || [];
+  } catch(err){ toast('Could not load Daily Labour Report — please try again.', true); console.error(err); state.dlrEntries = []; }
+}
+
+// Last 7 days' submission status for this project — the "did anyone forget
+// to submit today" strip.
+async function loadDLRSubmissionStrip(projectId){
+  try{
+    const since = new Date(); since.setDate(since.getDate() - 6);
+    const sinceStr = since.toISOString().slice(0,10);
+    const { data, error } = await withRetry(() =>
+      sb.from('ra_dlr_entries').select('entry_date').eq('project_id', projectId).gte('entry_date', sinceStr)
+    );
+    if(error){ console.error(error); state.dlrSubmissionStrip = {}; return; }
+    const set = new Set((data||[]).map(r => r.entry_date));
+    const strip = {};
+    for(let i = 6; i >= 0; i--){
+      const d = new Date(); d.setDate(d.getDate() - i);
+      const key = d.toISOString().slice(0,10);
+      strip[key] = set.has(key);
+    }
+    state.dlrSubmissionStrip = strip;
+  } catch(err){ console.error(err); state.dlrSubmissionStrip = {}; }
+}
+
+async function renderDLRTab(project){
+  const tabContent = document.getElementById('tabContent');
+  tabContent.innerHTML = `<div class="loading">Loading Daily Labour Report…</div>`;
+  await Promise.all([loadDLREntries(project.id, state.dlrDate), loadDLRSubmissionStrip(project.id)]);
+
+  const stripEntries = Object.entries(state.dlrSubmissionStrip);
+  tabContent.innerHTML = `
+    ${!canEnterDLR() ? `<div class="locked-note">🔒 Signed in as ${myRole.toUpperCase()} — DLR is entered by Owner, PM, or QS. You can review here.</div>` : ''}
+    <div class="dlr-strip">
+      ${stripEntries.map(([d, ok]) => {
+        const label = new Date(d+'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric' });
+        const isToday = d === new Date().toISOString().slice(0,10);
+        return `<button class="dlr-strip-day ${ok?'ok':'missing'} ${d===state.dlrDate?'selected':''}" data-date="${d}" title="${ok?'Submitted':'Not submitted'}">${ok?'✓':'⚠'}<br>${label}${isToday?' (today)':''}</button>`;
+      }).join('')}
+    </div>
+
+    <div class="toolbar">
+      <div class="field" style="max-width:200px; margin:0;"><input type="date" id="dlrDatePicker" value="${state.dlrDate}"></div>
+      <button class="btn tiny" id="dlrExportCsvBtn">⬇ CSV</button>
+    </div>
+
+    <div id="dlrGridWrap"></div>
+    ${canEnterDLR() ? `<div id="dlrAddRow" style="margin-top:10px;"></div>` : ''}
+  `;
+
+  document.getElementById('dlrDatePicker').addEventListener('change', async (e) => {
+    state.dlrDate = e.target.value;
+    await renderDLRTab(project);
+  });
+  main_dlrWireStripClicks(project);
+  document.getElementById('dlrExportCsvBtn').onclick = () => exportDLRCsv(project);
+
+  renderDLRGrid(project);
+  if(canEnterDLR()) renderDLRAddRow(project);
+}
+
+function main_dlrWireStripClicks(project){
+  document.querySelectorAll('.dlr-strip-day').forEach(btn => {
+    btn.onclick = async () => { state.dlrDate = btn.dataset.date; await renderDLRTab(project); };
+  });
+}
+
+function dlrRowTotal(entry){
+  return DLR_TRADE_FIELDS.reduce((s,f) => s + (Number(entry[f.key])||0), 0) + (Number(entry.others_count)||0);
+}
+
+function renderDLRGrid(project){
+  const wrap = document.getElementById('dlrGridWrap');
+  const editable = canEnterDLR();
+  const table = document.createElement('table');
+  table.className = 'data-table dlr-table';
+  const headCells = ['Subcontractor', ...DLR_TRADE_FIELDS.map(f=>f.label), 'Others #', 'Others Label', 'Total', ''];
+  table.innerHTML = `<thead><tr>${headCells.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody></tbody>`;
+  const tbody = table.querySelector('tbody');
+
+  const totals = {}; DLR_TRADE_FIELDS.forEach(f => totals[f.key] = 0); totals.others_count = 0; let grandTotal = 0;
+
+  state.dlrEntries.forEach(entry => {
+    DLR_TRADE_FIELDS.forEach(f => totals[f.key] += Number(entry[f.key])||0);
+    totals.others_count += Number(entry.others_count)||0;
+    grandTotal += dlrRowTotal(entry);
+
+    const tr = document.createElement('tr');
+    tr.dataset.entryId = entry.id;
+    const sc = entry.ra_subcontractors || {};
+    const cells = [`<td>${escapeHtml(sc.name||'')} <span class="u">${escapeHtml(sc.acct_code||'')}</span></td>`];
+    DLR_TRADE_FIELDS.forEach(f => {
+      cells.push(`<td>${editable ? `<input type="number" inputmode="numeric" min="0" class="dlr-cell" data-field="${f.key}" value="${entry[f.key]||''}">` : (entry[f.key]||0)}</td>`);
+    });
+    cells.push(`<td>${editable ? `<input type="number" inputmode="numeric" min="0" class="dlr-cell" data-field="others_count" value="${entry.others_count||''}">` : (entry.others_count||0)}</td>`);
+    cells.push(`<td>${editable ? `<input type="text" class="dlr-cell" data-field="others_label" value="${escapeHtml(entry.others_label||'')}" placeholder="e.g. Electrician">` : escapeHtml(entry.others_label||'')}</td>`);
+    cells.push(`<td class="num dlr-row-total">${dlrRowTotal(entry)}</td>`);
+    cells.push(`<td>${editable ? `<button class="icon-btn dlr-del-btn" title="Remove">✕</button>` : ''}</td>`);
+    tr.innerHTML = cells.join('');
+    tbody.appendChild(tr);
+  });
+
+  const totalsRow = document.createElement('tr');
+  totalsRow.className = 'wo-doc-total-row';
+  totalsRow.innerHTML = [`<td><strong>Total (${state.dlrEntries.length} subcontractor${state.dlrEntries.length!==1?'s':''})</strong></td>`,
+    ...DLR_TRADE_FIELDS.map(f=>`<td class="num"><strong>${totals[f.key]}</strong></td>`),
+    `<td class="num"><strong>${totals.others_count}</strong></td>`, `<td></td>`,
+    `<td class="num"><strong>${grandTotal}</strong></td>`, `<td></td>`
+  ].join('');
+  tbody.appendChild(totalsRow);
+
+  wrap.innerHTML = '';
+  wrap.appendChild(table);
+  if(!state.dlrEntries.length) wrap.insertAdjacentHTML('beforeend', `<div class="wo-lines-empty">No labour entered for this date yet.${canEnterDLR() ? ' Add a subcontractor below.' : ''}</div>`);
+
+  if(editable) wireDLRRowInputs(project);
+}
+
+let dlrCommitTimers = {};
+function wireDLRRowInputs(project){
+  document.querySelectorAll('#dlrGridWrap tr[data-entry-id]').forEach(tr => {
+    const entryId = tr.dataset.entryId;
+    const entry = state.dlrEntries.find(e => e.id === entryId);
+    tr.querySelectorAll('.dlr-cell').forEach(inp => {
+      inp.addEventListener('input', () => {
+        const field = inp.dataset.field;
+        entry[field] = field === 'others_label' ? inp.value : (parseInt(inp.value,10) || 0);
+        tr.querySelector('.dlr-row-total').textContent = dlrRowTotal(entry);
+        clearTimeout(dlrCommitTimers[entryId]);
+        dlrCommitTimers[entryId] = setTimeout(() => commitDLREntry(entry, project), 500);
+      });
+    });
+    const delBtn = tr.querySelector('.dlr-del-btn');
+    if(delBtn) delBtn.onclick = () => deleteDLREntry(entry, project);
+  });
+}
+
+async function commitDLREntry(entry, project){
+  try{
+    const { data: { user } } = await withRetry(() => sb.auth.getUser());
+    const payload = { project_id: entry.project_id, subcontractor_id: entry.subcontractor_id, entry_date: entry.entry_date, created_by: user.id };
+    DLR_TRADE_FIELDS.forEach(f => payload[f.key] = entry[f.key] || 0);
+    payload.others_count = entry.others_count || 0;
+    payload.others_label = entry.others_label || null;
+    payload.updated_at = new Date().toISOString();
+    const { error } = await withRetry(() => sb.from('ra_dlr_entries').upsert(payload, { onConflict: 'project_id,subcontractor_id,entry_date' }));
+    if(error){ toast(error.message, true); return; }
+    await loadDLRSubmissionStrip(project.id);
+    main_dlrWireStripClicks(project);
+  } catch(err){ toast('Could not save — please try again.', true); console.error(err); }
+}
+
+async function deleteDLREntry(entry, project){
+  if(entry.id && !confirm(`Remove ${entry.ra_subcontractors ? entry.ra_subcontractors.name : 'this'} from today's DLR?`)) return;
+  state.dlrEntries = state.dlrEntries.filter(e => e !== entry);
+  if(entry.id){
+    try{
+      const { error } = await withRetry(() => sb.from('ra_dlr_entries').delete().eq('id', entry.id));
+      if(error){ toast(error.message, true); return; }
+    } catch(err){ toast('Could not reach the server — please try again.', true); console.error(err); return; }
+  }
+  renderDLRGrid(project);
+}
+
+function renderDLRAddRow(project){
+  const wrap = document.getElementById('dlrAddRow');
+  wrap.innerHTML = `<div class="bi-desc-wrap" style="max-width:340px;"><input id="dlrScSearch" placeholder="+ Add subcontractor for ${state.dlrDate}…" autocomplete="off"></div>`;
+  const searchInput = document.getElementById('dlrScSearch');
+  let suggestBox = null;
+  const closeSuggest = () => { if(suggestBox){ suggestBox.remove(); suggestBox = null; } };
+  const openSuggest = () => {
+    closeSuggest();
+    const q = searchInput.value.trim().toLowerCase();
+    if(!q) return;
+    const already = new Set(state.dlrEntries.map(e => e.subcontractor_id));
+    const matches = state.subcontractors
+      .filter(s => s.is_active !== false && !already.has(s.id) && (s.name.toLowerCase().includes(q) || (s.acct_code||'').toLowerCase().includes(q)))
+      .slice(0, 10);
+    if(!matches.length) return;
+    suggestBox = document.createElement('div');
+    suggestBox.className = 'bi-suggest';
+    matches.forEach(s => {
+      const item = document.createElement('div');
+      item.className = 'bi-suggest-item';
+      item.innerHTML = `<span>${escapeHtml(s.name)}</span><span class="u">${escapeHtml(s.acct_code)}</span>`;
+      item.onmousedown = (e) => {
+        e.preventDefault();
+        const blank = { id: null, project_id: project.id, subcontractor_id: s.id, entry_date: state.dlrDate, ra_subcontractors: { name: s.name, acct_code: s.acct_code }, others_label: '' };
+        DLR_TRADE_FIELDS.forEach(f => blank[f.key] = 0);
+        blank.others_count = 0;
+        state.dlrEntries.push(blank);
+        renderDLRGrid(project);
+        searchInput.value = '';
+        closeSuggest();
+        const firstInput = document.querySelector(`#dlrGridWrap tr:last-of-type .dlr-cell`);
+        if(firstInput) firstInput.focus();
+      };
+      suggestBox.appendChild(item);
+    });
+    document.querySelector('#dlrAddRow .bi-desc-wrap').appendChild(suggestBox);
+  };
+  searchInput.addEventListener('input', openSuggest);
+  searchInput.addEventListener('focus', openSuggest);
+  searchInput.addEventListener('blur', () => setTimeout(closeSuggest, 150));
+}
+
+function exportDLRCsv(project){
+  const rows = state.dlrEntries.map(e => {
+    const sc = e.ra_subcontractors || {};
+    const row = { 'Subcontractor': sc.name || '', 'Acct Code': sc.acct_code || '' };
+    DLR_TRADE_FIELDS.forEach(f => row[f.label] = e[f.key] || 0);
+    row['Others #'] = e.others_count || 0;
+    row['Others Label'] = e.others_label || '';
+    row['Total'] = dlrRowTotal(e);
+    return row;
+  });
+  downloadCSV(`CCI DLR ${project.name} ${state.dlrDate}.csv`,
+    ['Subcontractor','Acct Code',...DLR_TRADE_FIELDS.map(f=>f.label),'Others #','Others Label','Total'], rows);
 }
 
 function renderWorkOrdersTab(project){
