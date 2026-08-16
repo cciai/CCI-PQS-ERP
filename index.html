@@ -3130,7 +3130,8 @@ function renderDLRGrid(project){
     grandTotal += dlrRowTotal(entry);
 
     const tr = document.createElement('tr');
-    tr.dataset.entryId = entry.id;
+    tr.dataset.entryId = entry.id || '';
+    tr.dataset.subcontractorId = entry.subcontractor_id;
     if(entry.updated_at) tr.title = `Last saved ${new Date(entry.updated_at).toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'})} on ${new Date(entry.updated_at).toLocaleDateString('en-IN')}`;
     const sc = entry.ra_subcontractors || {};
     const savedTime = entry.updated_at ? new Date(entry.updated_at).toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'}) : '';
@@ -3164,9 +3165,11 @@ function renderDLRGrid(project){
 
 let dlrCommitTimers = {};
 function wireDLRRowInputs(project){
-  document.querySelectorAll('#dlrGridWrap tr[data-entry-id]').forEach(tr => {
-    const entryId = tr.dataset.entryId;
-    const entry = state.dlrEntries.find(e => e.id === entryId);
+  document.querySelectorAll('#dlrGridWrap tr[data-subcontractor-id]').forEach(tr => {
+    const subId = tr.dataset.subcontractorId;
+    const entry = state.dlrEntries.find(e => e.subcontractor_id === subId);
+    if(!entry) return;
+    const entryId = entry.id || subId; // stable key for the debounce timer, even before first save
     tr.querySelectorAll('.dlr-cell').forEach(inp => {
       inp.addEventListener('input', () => {
         const field = inp.dataset.field;
@@ -3193,8 +3196,11 @@ async function commitDLREntry(entry, project){
     entry.id = data.id;
     entry.updated_at = data.updated_at;
     updateDLRSavedLabel(data.updated_at);
-    const row = document.querySelector(`#dlrGridWrap tr[data-entry-id="${entry.id}"]`);
-    if(row) row.title = `Last saved ${new Date(data.updated_at).toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'})}`;
+    const row = document.querySelector(`#dlrGridWrap tr[data-subcontractor-id="${entry.subcontractor_id}"]`);
+    if(row){
+      row.dataset.entryId = entry.id;
+      row.title = `Last saved ${new Date(data.updated_at).toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'})}`;
+    }
     await loadDLRSubmissionStrip(project.id);
     main_dlrWireStripClicks(project);
   } catch(err){ toast('Could not save — please try again.', true); console.error(err); }
