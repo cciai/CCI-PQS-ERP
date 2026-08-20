@@ -480,8 +480,8 @@
 /* ============================================================================
    SUPABASE CONNECTION — real project, anon key (safe client-side)
 ============================================================================ */
-const SUPABASE_URL = 'https://axdfgxumlwxhahmcocws.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZGZneHVtbHd4aGFobWNvY3dzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQyOTg0MDcsImV4cCI6MjA5OTg3NDQwN30.BcbiK1Gapkj8kseY7zDfqxs218QtjEwmzK5EbREzQEE';
+const SUPABASE_URL = 'https://jtbmrohjrsnoxcgcmmls.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp0Ym1yb2hqcnNub3hjZ2NtbWxzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcxNDM4OTEsImV4cCI6MjEwMjcxOTg5MX0.Fy1gRJkj3MLnJBmbonNpMKnfNyJx9Fzq49xbaC8pDK4';
 const { createClient } = supabase;
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -617,6 +617,7 @@ let state = {
   dlrDate: new Date().toISOString().slice(0,10),
   dlrEntries: [],
   dlrSubmissionStrip: {},
+  dlrStripCacheKey: null,
   dlrDayStatus: null,
   showWOBin: false,
   woBinList: [],
@@ -3047,6 +3048,7 @@ async function submitDLRDay(project){
     state.dlrDayStatus = data;
     toast(`DLR for ${state.dlrDate} submitted.`);
     await loadDLRSubmissionStrip(project.id);
+    state.dlrStripCacheKey = project.id;
     renderDLRTab(project);
   } catch(err){ toast('Could not reach the server — please try again.', true); console.error(err); }
 }
@@ -3054,7 +3056,10 @@ async function submitDLRDay(project){
 async function renderDLRTab(project){
   const tabContent = document.getElementById('tabContent');
   tabContent.innerHTML = `<div class="loading">Loading Daily Labour Report…</div>`;
-  await Promise.all([loadDLREntries(project.id, state.dlrDate), loadDLRSubmissionStrip(project.id), loadDLRDayStatus(project.id, state.dlrDate)]);
+  const stripPromise = (state.dlrStripCacheKey === project.id)
+    ? Promise.resolve()
+    : loadDLRSubmissionStrip(project.id).then(() => { state.dlrStripCacheKey = project.id; });
+  await Promise.all([loadDLREntries(project.id, state.dlrDate), stripPromise, loadDLRDayStatus(project.id, state.dlrDate)]);
 
   const stripEntries = Object.entries(state.dlrSubmissionStrip);
   const submitted = state.dlrDayStatus;
@@ -3201,8 +3206,6 @@ async function commitDLREntry(entry, project){
       row.dataset.entryId = entry.id;
       row.title = `Last saved ${new Date(data.updated_at).toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'})}`;
     }
-    await loadDLRSubmissionStrip(project.id);
-    main_dlrWireStripClicks(project);
   } catch(err){ toast('Could not save — please try again.', true); console.error(err); }
 }
 
