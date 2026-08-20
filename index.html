@@ -1243,7 +1243,7 @@ async function loadCommittedQuantities(projectId){
 
 async function loadSubcontractors(){
   try{
-    const { data, error } = await withRetry(() => sb.from('ra_subcontractors').select('*').order('name'));
+    const { data, error } = await withRetry(() => sb.from('ra_subcontractors').select('*').order('created_at', { ascending: false }));
     if(error){ toast(error.message, true); return; }
     state.subcontractors = data || [];
     state.subcontractorsLoaded = true;
@@ -1281,12 +1281,20 @@ function parseBankWorkbook(arrayBuffer, isCSV){
   if(headerIdx === -1) return { error: 'Could not find a header row with Date and Narration/Description columns. Try exporting a plain CSV from your bank\'s netbanking.' };
 
   const col = (patterns) => headers.findIndex(h => patterns.some(p => h.includes(p)));
-  const dateCol = col(['DATE']);
+  const dateCol = col(['VALUE DATE','TRANSACTION DATE','TXN DATE','DATE']);
   const narrCol = col(['NARRATION','DESCRIPTION','PARTICULAR']);
   const debitCol = col(['DEBIT','WITHDRAWAL']);
   const creditCol = col(['CREDIT','DEPOSIT']);
   const balanceCol = col(['BALANCE']);
-  if(dateCol === -1 || narrCol === -1 || (debitCol === -1 && creditCol === -1)){
+  // Some banks (ICICI among them) don't give separate Debit/Credit columns —
+  // instead there's one indicator column ("Cr/Dr", "Dr/Cr", "Type") holding
+  // CR or DR, plus a single unsigned "Transaction Amount" column. Fall back
+  // to that pattern when the separate-columns one isn't found.
+  const crDrCol = col(['CR DR','DR CR','CR/DR','DR/CR','TYPE','TRANSACTION TYPE']);
+  const amountCol = col(['TRANSACTION AMOUNT','AMOUNT']);
+  const usingCrDrPattern = (debitCol === -1 || creditCol === -1) && crDrCol !== -1 && amountCol !== -1;
+
+  if(dateCol === -1 || narrCol === -1 || (!usingCrDrPattern && debitCol === -1 && creditCol === -1)){
     return { error: 'Found a header row but could not identify Date/Narration/Debit/Credit columns clearly. The file may need to be a plain transaction export, not a formatted statement.' };
   }
 
@@ -1296,8 +1304,17 @@ function parseBankWorkbook(arrayBuffer, isCSV){
     if(!r || !r.length) continue;
     const dateRaw = r[dateCol];
     if(!dateRaw) continue;
-    const debit = debitCol !== -1 ? parseFloat(String(r[debitCol]).replace(/[^0-9.]/g,'')) : NaN;
-    const credit = creditCol !== -1 ? parseFloat(String(r[creditCol]).replace(/[^0-9.]/g,'')) : NaN;
+    let debit, credit;
+    if(usingCrDrPattern){
+      const indicator = normalizeText(String(r[crDrCol]));
+      const amt = parseFloat(String(r[amountCol]).replace(/[^0-9.]/g,''));
+      const isCredit = indicator.includes('CR') && !indicator.includes('DR');
+      debit = !isCredit ? amt : NaN;
+      credit = isCredit ? amt : NaN;
+    } else {
+      debit = debitCol !== -1 ? parseFloat(String(r[debitCol]).replace(/[^0-9.]/g,'')) : NaN;
+      credit = creditCol !== -1 ? parseFloat(String(r[creditCol]).replace(/[^0-9.]/g,'')) : NaN;
+    }
     if(isNaN(debit) && isNaN(credit)) continue;
     parsed.push({
       txn_date: parseBankDate(dateRaw),
@@ -1341,12 +1358,32 @@ function matchSubcontractorToNarration(narration){
     }
   }
   let best = null, bestScore = 0;
+  // ICICI (and similar) IMPS narrations embed the beneficiary name as one
+  // concatenated, space-stripped word that's often truncated to fit a fixed
+  // field — "Praveen Chandran" becomes "PraveenCha". Pull out narration
+  // "words" that aren't transaction-type boilerplate or pure numbers, and
+  // check each against the subcontractor's own space-stripped name for a
+  // prefix match in either direction, which catches truncation cleanly.
+  const TXN_KEYWORDS = ['MMT','IMPS','NEFT','RTGS','INF','INFT','DOMNEFT','BULD','UPI','CR','DR'];
+  const narrWords = norm.split(' ').filter(w => w.length >= 5 && !/^\d+$/.test(w) && !TXN_KEYWORDS.includes(w));
   for(const sc of state.subcontractors){
     if(sc.is_active === false) continue;
     const nameTokens = normalizeText(sc.name).split(' ').filter(t => t.length > 2);
     if(!nameTokens.length) continue;
-    const hits = nameTokens.filter(t => norm.includes(t)).length;
-    const score = hits / nameTokens.length;
+    const concatName = nameTokens.join('');
+    const fullMatch = nameTokens.filter(t => norm.includes(t)).length;
+    const fullScore = fullMatch / nameTokens.length;
+    let score = fullScore;
+    if(score < 0.9){
+      // Truncation check: does any narration word share a long enough
+      // prefix with the concatenated name in either direction?
+      const truncHit = narrWords.some(w => {
+        const shorter = Math.min(w.length, concatName.length);
+        if(shorter < 6) return false;
+        return concatName.startsWith(w) || w.startsWith(concatName.slice(0, Math.max(6, Math.ceil(concatName.length*0.5))));
+      });
+      if(truncHit) score = Math.max(score, 0.9);
+    }
     if(score > bestScore){ bestScore = score; best = sc; }
   }
   if(best && bestScore >= 0.6) return { subcontractor: best, confidence: bestScore >= 0.9 ? 'high' : 'medium' };
