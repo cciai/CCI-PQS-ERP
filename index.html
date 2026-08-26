@@ -466,10 +466,10 @@
       <button class="signout" id="signOutBtn">Sign out</button>
     </div>
     <div class="app-nav">
-      <button class="app-nav-btn active" id="navProjects">📁 Projects</button>
-      <button class="app-nav-btn" id="navSubcontractors">👷 Subcontractors</button>
-      <button class="app-nav-btn" id="navBankRecon">🏦 Bank Recon</button>
-      <button class="app-nav-btn" id="navBank">🏦 Bank Reconciliation</button>
+      <button class="app-nav-btn active" id="navProjects"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="display:inline-block;vertical-align:-3px"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> Projects</button>
+      <button class="app-nav-btn" id="navSubcontractors"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="display:inline-block;vertical-align:-3px"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></svg> Subcontractors</button>
+      <button class="app-nav-btn" id="navBankRecon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="display:inline-block;vertical-align:-3px"><path d="M3 21h18M4 10h16M5 21V10M19 21V10M9 21V14h6v7M12 2 3 7h18z"/></svg> Bank Recon</button>
+      <button class="app-nav-btn" id="navBank"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="display:inline-block;vertical-align:-3px"><path d="M3 21h18M4 10h16M5 21V10M19 21V10M9 21V14h6v7M12 2 3 7h18z"/></svg> Bank Reconciliation</button>
     </div>
     <div id="projectSubNav"></div>
     <div id="projectsNav" style="flex:1; display:flex; flex-direction:column; min-height:0;">
@@ -930,7 +930,7 @@ function renderProjectHeader(project){
   return `
     <div class="proj-header">
       <div>
-        <h1>${escapeHtml(project.name)} ${canEditBudget() ? `<button class="icon-btn" id="editProjBtn" title="Edit project">✎</button><button class="icon-btn" id="delProjBtn" title="Delete project">✕</button>` : ''}</h1>
+        <h1>${escapeHtml(project.name)} ${canEditBudget() ? `<button class="icon-btn" id="editProjBtn" title="Edit project"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-1px"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button><button class="icon-btn" id="delProjBtn" title="Delete project">✕</button>` : ''}</h1>
         <div class="meta">${escapeHtml(project.location||'—')}${project.client_name ? ' · ' + escapeHtml(project.client_name) : ''}${project.start_year ? ' · Started ' + project.start_year : ''}</div>
       </div>
     </div>
@@ -954,7 +954,7 @@ function renderProjectBinView(){
     </div>
     <div class="toolbar">
       <button class="btn tiny" id="backFromProjectBinBtn">← Back to Projects</button>
-      ${isOwner() ? `<button class="btn" id="emptyProjectBinBtn" style="color:var(--red);border-color:rgba(193,69,58,0.4);">🗑 Empty Bin (${bin.length})</button>` : ''}
+      ${isOwner() ? `<button class="btn" id="emptyProjectBinBtn" style="color:var(--red);border-color:rgba(193,69,58,0.4);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z"/></svg> Empty Bin (${bin.length})</button>` : ''}
     </div>
     <div class="wo-rate-note">Deleted projects stay here — WBS, budget, Work Orders, and Bills all stay intact — until the Bin is emptied.</div>
     <div id="projectBinList" style="margin-top:14px;"></div>
@@ -998,7 +998,7 @@ function renderHomeDashboard(){
   main.innerHTML = `
     <div class="proj-header">
       <div><h1>Projects</h1><div class="meta">${state.projects.length} project${state.projects.length!==1?'s':''}</div></div>
-      <button class="btn tiny" id="viewProjectBinBtn">🗑 Bin</button>
+      <button class="btn tiny" id="viewProjectBinBtn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z"/></svg> Bin</button>
     </div>
 
     <div class="bill-summary" style="max-width:none; display:grid; grid-template-columns:repeat(2,1fr); gap:16px;">
@@ -1067,8 +1067,8 @@ function renderHomeDashboard(){
     state.projects.forEach(p => {
       const dlrEl = document.querySelector(`#home-card-${p.id} .home-card-dlr`);
       if(dlrEl) dlrEl.innerHTML = dlrToday.has(p.id)
-        ? `<span class="lock-badge" style="background:rgba(63,143,99,0.12);color:var(--green);">✓ DLR submitted today</span>`
-        : `<span class="lock-badge lock-badge-own">⚠ DLR not submitted today</span>`;
+        ? `<span class="lock-badge" style="background:rgba(63,143,99,0.12);color:var(--green);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="display:inline-block;vertical-align:-2px"><path d="M20 6 9 17l-5-5"/></svg> DLR submitted today</span>`
+        : `<span class="lock-badge lock-badge-own"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg> DLR not submitted today</span>`;
     });
 
     const totalBudgetAll = Object.values(summaries).reduce((s,x) => s + Number(x.total_budget_value||0), 0);
@@ -1101,7 +1101,7 @@ function renderProjectSubNav(){
   }
   el.innerHTML = `
     <div class="proj-subnav">
-      <div class="proj-subnav-title">📁 ${escapeHtml(project.name)}</div>
+      <div class="proj-subnav-title"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="display:inline-block;vertical-align:-3px"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> ${escapeHtml(project.name)}</div>
       <button class="proj-subnav-btn ${state.activeTab==='budget'&&!state.viewingWOId?'active':''}" data-sec="budget">Budget</button>
       <button class="proj-subnav-btn ${state.activeTab==='workorders'?'active':''}" data-sec="workorders">Work Orders${state.workOrders.length ? ` (${state.workOrders.length})` : ''}</button>
       <button class="proj-subnav-btn ${state.activeTab==='bills'?'active':''}" data-sec="bills">Bills</button>
@@ -1138,12 +1138,12 @@ function renderBudgetTab(project){
   const totalBilled = summary ? Number(summary.total_billed_value) : 0;
   tabContent.innerHTML = `
     <div class="wo-rate-note" style="margin-bottom:14px;">${state.stages.length} WBS stage${state.stages.length!==1?'s':''} · ${billableStages} billable · ${state.budgetItems.length} budget item${state.budgetItems.length!==1?'s':''} · Total Budget ₹${fmtNum(totalBudget)} · Billed ₹${fmtNum(totalBilled)}</div>
-    ${!canEditBudget() ? `<div class="locked-note">🔒 Signed in as ${myRole.toUpperCase()} — budgets are set by Owner/PM and locked. You can review, but not edit, this structure.</div>` : ''}
+    ${!canEditBudget() ? `<div class="locked-note"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Signed in as ${myRole.toUpperCase()} — budgets are set by Owner/PM and locked. You can review, but not edit, this structure.</div>` : ''}
     ${canEditBudget() ? `<div class="wo-rate-note">Tick items and Ctrl+C (⌘+C on Mac) to copy, then click into any stage and Ctrl+V to paste — or use the Copy/Paste buttons if you're on a touch device.</div>` : ''}
     <div class="toolbar">
       <button class="btn primary" id="addRootStageBtn" ${!canEditBudget()?'disabled':''}>+ Add WBS Stage</button>
-      <button class="btn tiny" id="budgetExportCsvBtn">⬇ CSV</button>
-      <button class="btn tiny" id="budgetExportPdfBtn">🖨 PDF</button>
+      <button class="btn tiny" id="budgetExportCsvBtn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block;vertical-align:-2px"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></svg> CSV</button>
+      <button class="btn tiny" id="budgetExportPdfBtn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> PDF</button>
       <span id="copyToolbar"></span>
     </div>
     <div class="blueprint" style="border:1px solid var(--paper-line); background:#fff;">
@@ -1432,7 +1432,7 @@ function renderBankUploadScreen(){
   main.innerHTML = `
     <div class="proj-header">
       <div><h1>Bank Reconciliation</h1><div class="meta">Upload a statement, get suggested matches, confirm each one</div></div>
-      <button class="btn tiny" id="goToReviewBtn">📋 Review Queue</button>
+      <button class="btn tiny" id="goToReviewBtn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg> Review Queue</button>
     </div>
     ${canReconcile() ? `
       <div class="wo-form" style="max-width:600px;">
@@ -1441,7 +1441,7 @@ function renderBankUploadScreen(){
         <div class="field"><input type="file" id="bankFileInput" accept=".csv,.xlsx,.xls"></div>
         <div id="bankUploadStatus"></div>
       </div>
-    ` : `<div class="locked-note">🔒 Only Owner, PM, or Accounts can import bank statements.</div>`}
+    ` : `<div class="locked-note"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Only Owner, PM, or Accounts can import bank statements.</div>`}
   `;
   document.getElementById('goToReviewBtn').onclick = async () => { state.bankReconStep = 'review'; await renderBankReconView(); };
   const fileInput = document.getElementById('bankFileInput');
@@ -1457,8 +1457,8 @@ function handleBankFileUpload(e){
   const reader = new FileReader();
   reader.onload = async (ev) => {
     const result = parseBankWorkbook(ev.target.result, isCSV);
-    if(result.error){ statusEl.innerHTML = `<div class="locked-note">⚠ ${escapeHtml(result.error)}</div>`; return; }
-    if(!result.rows.length){ statusEl.innerHTML = `<div class="locked-note">⚠ No transaction rows found in this file.</div>`; return; }
+    if(result.error){ statusEl.innerHTML = `<div class="locked-note"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg> ${escapeHtml(result.error)}</div>`; return; }
+    if(!result.rows.length){ statusEl.innerHTML = `<div class="locked-note"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg> No transaction rows found in this file.</div>`; return; }
     statusEl.innerHTML = `<div class="wo-rate-note">Found ${result.rows.length} transactions. Matching against ${state.subcontractors.length} subcontractors…</div>`;
     const batchId = crypto.randomUUID();
     const rows = result.rows.map(r => {
@@ -1473,12 +1473,12 @@ function handleBankFileUpload(e){
       const { data: { user } } = await withRetry(() => sb.auth.getUser());
       const payload = rows.map(r => ({ ...r, created_by: user.id }));
       const { error } = await withRetry(() => sb.from('ra_bank_transactions').insert(payload));
-      if(error){ statusEl.innerHTML = `<div class="locked-note">⚠ ${escapeHtml(error.message)}</div>`; return; }
+      if(error){ statusEl.innerHTML = `<div class="locked-note"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg> ${escapeHtml(error.message)}</div>`; return; }
       toast(`Imported ${rows.length} transactions.`);
       state.bankReconStep = 'review';
       state.bankTxnFilter = 'suggested';
       await renderBankReconView();
-    } catch(err){ statusEl.innerHTML = `<div class="locked-note">⚠ Could not reach the server.</div>`; console.error(err); }
+    } catch(err){ statusEl.innerHTML = `<div class="locked-note"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg> Could not reach the server.</div>`; console.error(err); }
   };
   if(isCSV) reader.readAsBinaryString(file); else reader.readAsArrayBuffer(file);
 }
@@ -1549,7 +1549,7 @@ async function renderBankReviewScreen(){
           Suggested match: <strong>${escapeHtml(sc.name)}</strong> (${escapeHtml(sc.acct_code)}) — ${txn.suggested_confidence} confidence
         </div>
       ` : ''}
-      ${txn.match_status === 'confirmed' ? `<div class="locked-note" style="color:var(--green);">✓ Confirmed and posted</div>` : ''}
+      ${txn.match_status === 'confirmed' ? `<div class="locked-note" style="color:var(--green);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="display:inline-block;vertical-align:-2px"><path d="M20 6 9 17l-5-5"/></svg> Confirmed and posted</div>` : ''}
       ${canAct && txn.match_status !== 'confirmed' ? `<div id="actions-${txn.id}" class="bank-txn-actions"></div>` : ''}
     `;
     listEl.appendChild(card);
@@ -1600,7 +1600,7 @@ function renderBankTxnActions(el, txn){
       </div>
     </div>
     <div class="modal-actions" style="margin-top:10px; justify-content:flex-start;">
-      <button class="btn primary txn-confirm-btn">✓ Confirm &amp; Post</button>
+      <button class="btn primary txn-confirm-btn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="display:inline-block;vertical-align:-2px"><path d="M20 6 9 17l-5-5"/></svg> Confirm &amp; Post</button>
       ${isDebit ? `<button class="btn txn-flag-btn" style="color:var(--amber);">🚩 Flag for Mukesh</button>` : ''}
     </div>
   `;
@@ -1738,8 +1738,8 @@ async function renderSubcontractorsView(){
         <div class="meta">${state.subcontractors.length} total in your master list</div>
       </div>
       <div class="toolbar" style="margin:0;">
-        <button class="btn tiny" id="scExportCsvBtn">⬇ CSV</button>
-        <button class="btn tiny" id="scExportPdfBtn">🖨 PDF</button>
+        <button class="btn tiny" id="scExportCsvBtn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block;vertical-align:-2px"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></svg> CSV</button>
+        <button class="btn tiny" id="scExportPdfBtn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> PDF</button>
         <button class="btn primary" id="newScBtn" ${!canManageSubcontractors()?'disabled':''}>+ New Subcontractor</button>
       </div>
     </div>
@@ -1840,7 +1840,7 @@ function updateSubcontractorList(){
         </div>
         ${(sc.manpower_type||[]).length ? `<div class="sc-tags">${(sc.manpower_type||[]).map(m=>`<span class="badge billable">${escapeHtml(m)}</span>`).join('')}</div>` : ''}
       </div>
-      ${canManageSubcontractors() ? `<button class="icon-btn sc-edit-btn" title="Edit">✎</button>` : ''}
+      ${canManageSubcontractors() ? `<button class="icon-btn sc-edit-btn" title="Edit"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-1px"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button>` : ''}
     `;
     card.onclick = (e) => { if(!e.target.closest('.sc-edit-btn')) openSubcontractorQuickView(sc); };
     const editBtn = card.querySelector('.sc-edit-btn');
@@ -1854,7 +1854,7 @@ function openSubcontractorQuickView(sc){
   openModal(`
     <h3>${escapeHtml(sc.name)}${sc.is_active===false?' <span class="lock-badge lock-badge-own">Inactive</span>':''}</h3>
     <div class="wo-rate-note" style="margin-bottom:14px;">${escapeHtml(sc.acct_code)}</div>
-    ${sc.is_active===false && sc.inactive_reason ? `<div class="locked-note">⚠ ${escapeHtml(sc.inactive_reason)}</div>` : ''}
+    ${sc.is_active===false && sc.inactive_reason ? `<div class="locked-note"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg> ${escapeHtml(sc.inactive_reason)}</div>` : ''}
     ${row('Name as per PAN', sc.name_as_per_pan)}
     ${row('Phone', sc.phone)}
     ${row('WhatsApp', sc.whatsapp_number)}
@@ -2331,7 +2331,7 @@ function renderBillEntry(project){
     const lockTitle = item.billing_locked ? (item.lock_reason || 'Billing locked by Owner') : 'A stage above this item is locked';
     return `
       <div class="bitem" style="grid-template-columns:1fr 60px 80px 90px 90px 90px 110px;">
-        <span class="desc">${escapeHtml(item.description||'')}${lineLocked ? ` <span class="lock-badge lock-badge-own" title="${escapeHtml(lockTitle)}">🔒 Locked</span>` : ''}<div class="wo-line-path">${escapeHtml(getStagePath(item.stage_id))}</div></span>
+        <span class="desc">${escapeHtml(item.description||'')}${lineLocked ? ` <span class="lock-badge lock-badge-own" title="${escapeHtml(lockTitle)}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Locked</span>` : ''}<div class="wo-line-path">${escapeHtml(getStagePath(item.stage_id))}</div></span>
         <span class="unit">${escapeHtml(item.unit||'')}</span>
         <span class="rate">₹${fmtNum(rate)}</span>
         <span class="qty">${fmtNum(prevQty)}</span>
@@ -2358,14 +2358,14 @@ function renderBillEntry(project){
     <button class="btn tiny" id="backToWO" style="margin-bottom:14px;">${state.billEntryReturnTo === 'bills' ? '← Back to Bills' : '← Back to Work Order'}</button>
     <div class="wo-form">
       <h3 class="wo-form-title">
-        Bill #${bill.bill_no} <span class="badge ${bill.status==='draft'?'internal':'billable'}">${bill.status}</span>${isFinalized ? ` <span class="finalized-chip" title="Finalized ${new Date(bill.finalized_at).toLocaleDateString('en-IN')}">🔐 Finalized</span>` : ''}
-        <button class="btn tiny" id="printBillBtn" style="font-weight:600;">🖨 Print / Download PDF</button>
+        Bill #${bill.bill_no} <span class="badge ${bill.status==='draft'?'internal':'billable'}">${bill.status}</span>${isFinalized ? ` <span class="finalized-chip" title="Finalized ${new Date(bill.finalized_at).toLocaleDateString('en-IN')}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Finalized</span>` : ''}
+        <button class="btn tiny" id="printBillBtn" style="font-weight:600;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> Print / Download PDF</button>
         ${canDelete ? `<button class="icon-btn" id="deleteBillBtn" title="Delete bill" style="font-size:14px;">✕</button>` : ''}
       </h3>
       <div class="wo-rate-note">${wo.ra_subcontractors ? escapeHtml(wo.ra_subcontractors.name) : ''} · Period ${bill.period_from} to ${bill.period_to}${isFinalized ? '' : (!isEditable && bill.status!=='draft' ? ' · Locked — approved bills can no longer be edited' : '')}</div>
 
-      ${isFinalized ? `<div class="locked-note">🔒 Finalized by Accounts on ${new Date(bill.finalized_at).toLocaleDateString('en-IN')} — this bill is now permanently locked. No edits or deletion, by anyone, including Owner.</div>` : ''}
-      ${bill.rejection_reason ? `<div class="locked-note" style="color:var(--red);border-color:rgba(193,69,58,0.35);background:rgba(193,69,58,0.08);">⚠ Rejected: ${escapeHtml(bill.rejection_reason)}</div>` : ''}
+      ${isFinalized ? `<div class="locked-note"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Finalized by Accounts on ${new Date(bill.finalized_at).toLocaleDateString('en-IN')} — this bill is now permanently locked. No edits or deletion, by anyone, including Owner.</div>` : ''}
+      ${bill.rejection_reason ? `<div class="locked-note" style="color:var(--red);border-color:rgba(193,69,58,0.35);background:rgba(193,69,58,0.08);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg> Rejected: ${escapeHtml(bill.rejection_reason)}</div>` : ''}
 
       <div class="bitem-head" style="grid-template-columns:1fr 60px 80px 90px 90px 90px 110px;">
         <span>Item</span><span>Unit</span><span class="rate">Rate</span><span class="qty">Previous</span><span class="qty">This Bill</span><span class="qty">Cumulative</span><span class="amount">This Amount</span>
@@ -2419,7 +2419,7 @@ function renderBillEntry(project){
       ` : ''}
       ${(bill.status === 'approved' || bill.status === 'paid') && !isFinalized && canFinalizeBill() ? `
         <div class="modal-actions" style="margin-top:20px;">
-          <button class="btn finalize-row-btn" id="finalizeBillBtn">🔐 Finalize (locks permanently)</button>
+          <button class="btn finalize-row-btn" id="finalizeBillBtn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Finalize (locks permanently)</button>
         </div>
       ` : ''}
 
@@ -2825,8 +2825,8 @@ function renderBillsTab(project){
 
     <div class="toolbar" id="billsToolbar">
       <button class="btn primary" id="newBillFromBillsTabBtn" ${!canCreateWO()?'disabled':''}>+ New Bill</button>
-      <button class="btn tiny" id="billsExportCsvBtn">⬇ CSV</button>
-      <button class="btn tiny" id="viewBinBtn">🗑 Bin</button>
+      <button class="btn tiny" id="billsExportCsvBtn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block;vertical-align:-2px"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></svg> CSV</button>
+      <button class="btn tiny" id="viewBinBtn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z"/></svg> Bin</button>
     </div>
     <div id="newBillPicker" style="display:none;"></div>
     <div class="blueprint" style="border:1px solid var(--paper-line); background:#fff;">
@@ -2920,8 +2920,8 @@ function renderBillsTab(project){
           <td class="num">₹${fmtNum(b._net)}</td>
           <td><span class="badge ${b.status==='draft'?'internal':'billable'}">${b.status}</span></td>
           <td class="dt-actions">
-            ${b.finalized_at ? `<span class="finalized-chip" title="Finalized ${new Date(b.finalized_at).toLocaleDateString('en-IN')}">🔐 Finalized</span>`
-              : (canShowFinalize && canFinalizeBill() ? `<button class="btn tiny finalize-row-btn" data-bill="${b.id}">🔐 Finalize</button>` : '')}
+            ${b.finalized_at ? `<span class="finalized-chip" title="Finalized ${new Date(b.finalized_at).toLocaleDateString('en-IN')}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Finalized</span>`
+              : (canShowFinalize && canFinalizeBill() ? `<button class="btn tiny finalize-row-btn" data-bill="${b.id}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Finalize</button>` : '')}
           </td>
         </tr>`;
       }).join('')}
@@ -2970,7 +2970,7 @@ function renderBinView(project){
   tabContent.innerHTML = `
     <div class="toolbar">
       <button class="btn tiny" id="backFromBinBtn">← Back to Bills</button>
-      ${isOwner() ? `<button class="btn" id="emptyBinBtn" style="color:var(--red);border-color:rgba(193,69,58,0.4);">🗑 Empty Bin (${bin.length})</button>` : ''}
+      ${isOwner() ? `<button class="btn" id="emptyBinBtn" style="color:var(--red);border-color:rgba(193,69,58,0.4);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z"/></svg> Empty Bin (${bin.length})</button>` : ''}
     </div>
     <div class="wo-rate-note">Deleted bills stay here until the Bin is emptied — nothing is permanently removed just by deleting it.</div>
     <div id="binList" style="margin-top:14px;"></div>
@@ -3010,7 +3010,7 @@ function renderWOBinView(project){
   tabContent.innerHTML = `
     <div class="toolbar">
       <button class="btn tiny" id="backFromWOBinBtn">← Back to Work Orders</button>
-      ${isOwner() ? `<button class="btn" id="emptyWOBinBtn" style="color:var(--red);border-color:rgba(193,69,58,0.4);">🗑 Empty Bin (${bin.length})</button>` : ''}
+      ${isOwner() ? `<button class="btn" id="emptyWOBinBtn" style="color:var(--red);border-color:rgba(193,69,58,0.4);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z"/></svg> Empty Bin (${bin.length})</button>` : ''}
     </div>
     <div class="wo-rate-note">Deleted Work Orders stay here until the Bin is emptied.</div>
     <div id="woBinList" style="margin-top:14px;"></div>
@@ -3121,24 +3121,24 @@ async function renderDLRTab(project){
   const stripEntries = Object.entries(state.dlrSubmissionStrip);
   const submitted = state.dlrDayStatus;
   tabContent.innerHTML = `
-    ${!canEnterDLR() ? `<div class="locked-note">🔒 Signed in as ${myRole.toUpperCase()} — DLR is entered by Owner, PM, or QS. You can review here.</div>` : ''}
+    ${!canEnterDLR() ? `<div class="locked-note"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Signed in as ${myRole.toUpperCase()} — DLR is entered by Owner, PM, or QS. You can review here.</div>` : ''}
     <div class="dlr-strip">
       ${stripEntries.map(([d, ok]) => {
         const label = new Date(d+'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric' });
         const isToday = d === new Date().toISOString().slice(0,10);
-        return `<button class="dlr-strip-day ${ok?'ok':'missing'} ${d===state.dlrDate?'selected':''}" data-date="${d}" title="${ok?'Submitted':'Not submitted'}">${ok?'✓':'⚠'}<br>${label}${isToday?' (today)':''}</button>`;
+        return `<button class="dlr-strip-day ${ok?'ok':'missing'} ${d===state.dlrDate?'selected':''}" data-date="${d}" title="${ok?'Submitted':'Not submitted'}">${ok?'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="display:inline-block;vertical-align:-2px"><path d="M20 6 9 17l-5-5"/></svg>':'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>'}<br>${label}${isToday?' (today)':''}</button>`;
       }).join('')}
     </div>
 
     ${submitted
-      ? `<div class="locked-note" style="color:var(--green);border-color:rgba(63,143,99,0.35);background:rgba(63,143,99,0.08);">✓ Submitted for ${state.dlrDate} by ${submitted.submitted_by === session.user.id ? 'you' : 'a teammate'} at ${new Date(submitted.submitted_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}. You can still edit below — it stays marked submitted.</div>`
-      : `<div class="locked-note">⚠ Not yet submitted for ${state.dlrDate}. Rows auto-save as you type, but nothing confirms the day is complete until you submit.</div>`
+      ? `<div class="locked-note" style="color:var(--green);border-color:rgba(63,143,99,0.35);background:rgba(63,143,99,0.08);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="display:inline-block;vertical-align:-2px"><path d="M20 6 9 17l-5-5"/></svg> Submitted for ${state.dlrDate} by ${submitted.submitted_by === session.user.id ? 'you' : 'a teammate'} at ${new Date(submitted.submitted_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}. You can still edit below — it stays marked submitted.</div>`
+      : `<div class="locked-note"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg> Not yet submitted for ${state.dlrDate}. Rows auto-save as you type, but nothing confirms the day is complete until you submit.</div>`
     }
 
     <div class="toolbar">
       <div class="field" style="max-width:200px; margin:0;"><input type="date" id="dlrDatePicker" value="${state.dlrDate}"></div>
-      <button class="btn tiny" id="dlrExportCsvBtn">⬇ CSV</button>
-      <button class="btn tiny" id="dlrPrintBtn">🖨 PDF</button>
+      <button class="btn tiny" id="dlrExportCsvBtn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block;vertical-align:-2px"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></svg> CSV</button>
+      <button class="btn tiny" id="dlrPrintBtn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> PDF</button>
       <span class="pg-status" id="dlrSavedLabel"></span>
     </div>
 
@@ -3146,7 +3146,7 @@ async function renderDLRTab(project){
     ${canEnterDLR() ? `<div id="dlrAddRow" style="margin-top:10px;"></div>` : ''}
     ${canEnterDLR() ? `
       <div class="modal-actions" style="margin-top:16px; justify-content:flex-start;">
-        <button class="btn primary" id="dlrSubmitBtn">${submitted ? '✓ Re-submit DLR for '+state.dlrDate : 'Submit DLR for '+state.dlrDate}</button>
+        <button class="btn primary" id="dlrSubmitBtn">${submitted ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="display:inline-block;vertical-align:-2px"><path d="M20 6 9 17l-5-5"/></svg> Re-submit DLR for '+state.dlrDate : 'Submit DLR for '+state.dlrDate}</button>
       </div>
     ` : ''}
   `;
@@ -3197,7 +3197,7 @@ function renderDLRGrid(project){
     if(entry.updated_at) tr.title = `Last saved ${new Date(entry.updated_at).toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'})} on ${new Date(entry.updated_at).toLocaleDateString('en-IN')}`;
     const sc = entry.ra_subcontractors || {};
     const savedTime = entry.updated_at ? new Date(entry.updated_at).toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'}) : '';
-    const cells = [`<td>${escapeHtml(sc.name||'')} <span class="u">${escapeHtml(sc.acct_code||'')}</span>${savedTime ? `<div class="wo-line-path">⏱ ${savedTime}</div>` : ''}</td>`];
+    const cells = [`<td>${escapeHtml(sc.name||'')} <span class="u">${escapeHtml(sc.acct_code||'')}</span>${savedTime ? `<div class="wo-line-path"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-1px"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> ${savedTime}</div>` : ''}</td>`];
     DLR_TRADE_FIELDS.forEach(f => {
       cells.push(`<td>${editable ? `<input type="number" inputmode="numeric" min="0" class="dlr-cell" data-field="${f.key}" value="${entry[f.key]||''}">` : (entry[f.key]||0)}</td>`);
     });
@@ -3407,9 +3407,9 @@ function renderWorkOrdersTab(project){
   tabContent.innerHTML = `
     <div class="toolbar">
       <button class="btn primary" id="newWOBtn" ${!canCreateWO() ? 'disabled' : ''}>+ New Work Order</button>
-      <button class="btn tiny" id="woExportCsvBtn">⬇ CSV</button>
-      <button class="btn tiny" id="woExportPdfBtn">🖨 PDF</button>
-      <button class="btn tiny" id="viewWOBinBtn">🗑 Bin</button>
+      <button class="btn tiny" id="woExportCsvBtn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block;vertical-align:-2px"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></svg> CSV</button>
+      <button class="btn tiny" id="woExportPdfBtn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> PDF</button>
+      <button class="btn tiny" id="viewWOBinBtn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z"/></svg> Bin</button>
     </div>
     <div id="woList"></div>
   `;
@@ -3469,7 +3469,7 @@ function renderWorkOrdersTab(project){
         const lineCount = (wo.ra_wo_line_items || []).length;
         return `
         <tr class="data-row" data-wo="${wo.id}">
-          <td>#${wo.order_no}${wo.billing_locked ? ' <span class="lock-badge lock-badge-own" title="'+(wo.lock_reason?escapeHtml(wo.lock_reason):'Billing locked')+'">🔒</span>' : ''}</td>
+          <td>#${wo.order_no}${wo.billing_locked ? ' <span class="lock-badge lock-badge-own" title="'+(wo.lock_reason?escapeHtml(wo.lock_reason):'Billing locked')+'"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span>' : ''}</td>
           <td>${escapeHtml(sc ? sc.name : 'Unknown')} <span class="u">${escapeHtml(sc?sc.acct_code:'')}</span></td>
           <td>${escapeHtml(wo.wo_ref)}</td>
           <td>${wo.wo_date}</td>
@@ -3481,9 +3481,9 @@ function renderWorkOrdersTab(project){
           <td><span class="badge ${wo.status==='active'?'billable':'internal'}">${wo.status}</span></td>
           <td class="dt-actions">
             <button class="icon-btn dt-view" title="View / Bills">📄</button>
-            <button class="icon-btn dt-print" title="Print / PDF">🖨</button>
-            ${canCreateWO() ? `<button class="icon-btn dt-edit" title="Edit">✎</button>` : ''}
-            ${isOwner() ? `<button class="icon-btn dt-lock" title="${wo.billing_locked?'Unlock billing':'Lock billing'}">${wo.billing_locked?'🔓':'🔒'}</button>` : ''}
+            <button class="icon-btn dt-print" title="Print / PDF"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg></button>
+            ${canCreateWO() ? `<button class="icon-btn dt-edit" title="Edit"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-1px"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button>` : ''}
+            ${isOwner() ? `<button class="icon-btn dt-lock" title="${wo.billing_locked?'Unlock billing':'Lock billing'}">${wo.billing_locked?'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 7.75-3.9"/></svg>':'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'}</button>` : ''}
             ${isOwner() ? `<button class="icon-btn dt-delete" title="Delete">✕</button>` : ''}
           </td>
         </tr>`;
@@ -3580,7 +3580,7 @@ function renderNewWOForm(project, editingWOId){
       <div class="wo-rate-note">Retention/TDS/Safety are set here per Work Order — they vary by project and subcontractor, so there's no shared default. GST is added on top of the billed amount, not deducted — pick "Not applicable" for unregistered subcontractors.</div>
 
       <h4 class="wo-lines-title">Scope of Work (linked to budget items)</h4>
-      ${!billableItems.length ? `<div class="locked-note">⚠ This project has no budget items yet. Add them in Budget Setup before raising a Work Order.</div>` : ''}
+      ${!billableItems.length ? `<div class="locked-note"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg> This project has no budget items yet. Add them in Budget Setup before raising a Work Order.</div>` : ''}
       <div id="woLinesTable"></div>
       ${billableItems.length ? `<button class="btn tiny" id="addWOLineBtn" style="margin-top:8px;">+ Add line item</button>` : ''}
 
@@ -3694,7 +3694,7 @@ function renderNewWOForm(project, editingWOId){
         <span><input type="number" inputmode="decimal" step="0.001" class="wol-qty" placeholder="Qty" disabled></span>
         <span><input type="number" inputmode="decimal" step="0.01" class="wol-rate" placeholder="Rate" disabled></span>
         <span class="amount" id="wolAmount">—</span>
-        <span class="bi-add-actions"><button class="icon-btn wol-save" title="Add">✓</button><button class="icon-btn wol-cancel" title="Cancel">✕</button></span>
+        <span class="bi-add-actions"><button class="icon-btn wol-save" title="Add"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="display:inline-block;vertical-align:-2px"><path d="M20 6 9 17l-5-5"/></svg></button><button class="icon-btn wol-cancel" title="Cancel">✕</button></span>
       `;
       table.appendChild(addRow);
 
@@ -4205,14 +4205,14 @@ function renderStageNode(stage){
     <span class="stage-name">${escapeHtml(stage.name)}</span>
     <span class="badge ${stage.category_type}">${stage.category_type}</span>
     ${rollupTotal > 0 ? `<span class="stage-rollup-total">₹${fmtNum(rollupTotal)}</span>` : ''}
-    ${directlyLocked ? `<span class="lock-badge lock-badge-own" title="${stage.lock_reason ? escapeHtml(stage.lock_reason) : 'Billing locked by Owner'}">🔒 Locked</span>` : ''}
-    ${inheritedLock ? `<span class="lock-badge lock-badge-inherited" title="A stage above this one is locked">🔒 Inherited</span>` : ''}
+    ${directlyLocked ? `<span class="lock-badge lock-badge-own" title="${stage.lock_reason ? escapeHtml(stage.lock_reason) : 'Billing locked by Owner'}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Locked</span>` : ''}
+    ${inheritedLock ? `<span class="lock-badge lock-badge-inherited" title="A stage above this one is locked"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Inherited</span>` : ''}
     <span class="stage-actions">
       ${canEditBudget() && stage.category_type==='billable' ? `<button class="icon-btn add-item">+ Item</button>` : ''}
       ${canEditBudget() ? `<button class="icon-btn add-sub">+ Stage</button>` : ''}
       ${canEditBudget() ? `<button class="icon-btn dup">⧉ Duplicate</button>` : ''}
-      ${canEditBudget() && stage.category_type==='billable' && state.itemClipboard.length ? `<button class="icon-btn stage-paste-btn">📋 Paste (${state.itemClipboard.length})</button>` : ''}
-      ${isOwner() ? `<button class="icon-btn stage-lock-toggle" title="${directlyLocked ? 'Unlock billing for this stage' : 'Lock billing for this stage'}">${directlyLocked ? '🔓' : '🔒'}</button>` : ''}
+      ${canEditBudget() && stage.category_type==='billable' && state.itemClipboard.length ? `<button class="icon-btn stage-paste-btn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg> Paste (${state.itemClipboard.length})</button>` : ''}
+      ${isOwner() ? `<button class="icon-btn stage-lock-toggle" title="${directlyLocked ? 'Unlock billing for this stage' : 'Lock billing for this stage'}">${directlyLocked ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 7.75-3.9"/></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'}</button>` : ''}
       ${canEditBudget() ? `<button class="icon-btn del">✕</button>` : ''}
     </span>
   `;
@@ -4262,7 +4262,7 @@ function renderStageNode(stage){
             <input class="ei-qty" type="number" inputmode="decimal" step="0.001" value="${it.budgeted_qty}">
             <input class="ei-rate" type="number" inputmode="decimal" step="0.01" value="${it.budgeted_rate||''}">
             <span></span>
-            <span class="bi-add-actions"><button class="icon-btn ei-save" title="Save">✓</button><button class="icon-btn ei-cancel" title="Cancel">✕</button></span>
+            <span class="bi-add-actions"><button class="icon-btn ei-save" title="Save"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="display:inline-block;vertical-align:-2px"><path d="M20 6 9 17l-5-5"/></svg></button><button class="icon-btn ei-cancel" title="Cancel">✕</button></span>
           `;
           const descI = editRow.querySelector('.ei-desc');
           const unitI = editRow.querySelector('.ei-unit');
@@ -4294,12 +4294,12 @@ function renderStageNode(stage){
         const itemLocked = !!it.billing_locked;
         const itemInheritedLock = !itemLocked && isStageLockedInherited(it.stage_id);
         r.innerHTML = `
-          <span class="desc">${canEditBudget() ? `<input type="checkbox" class="bi-select-cb" data-item="${it.id}" ${state.selectedItemIds.has(it.id)?'checked':''}>` : ''}${escapeHtml(it.description)}${itemLocked ? ` <span class="lock-badge lock-badge-own" title="${it.lock_reason?escapeHtml(it.lock_reason):'Billing locked by Owner'}">🔒</span>` : ''}${itemInheritedLock ? ` <span class="lock-badge lock-badge-inherited" title="Locked via its WBS stage">🔒</span>` : ''}</span>
+          <span class="desc">${canEditBudget() ? `<input type="checkbox" class="bi-select-cb" data-item="${it.id}" ${state.selectedItemIds.has(it.id)?'checked':''}>` : ''}${escapeHtml(it.description)}${itemLocked ? ` <span class="lock-badge lock-badge-own" title="${it.lock_reason?escapeHtml(it.lock_reason):'Billing locked by Owner'}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span>` : ''}${itemInheritedLock ? ` <span class="lock-badge lock-badge-inherited" title="Locked via its WBS stage"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span>` : ''}</span>
           <span class="unit">${escapeHtml(it.unit)}</span>
           <span class="qty">${fmtNum(it.budgeted_qty)}</span>
           <span class="rate">${it.budgeted_rate ? '₹'+fmtNum(it.budgeted_rate) : '—'}</span>
           <span class="amount">${lineValue !== null ? '₹'+fmtNum(lineValue) : '—'}</span>
-          <span class="del">${canEditBudget() ? `<button class="icon-btn edit-item" title="Edit">✎</button>` : ''}${isOwner() ? `<button class="icon-btn item-lock-toggle" title="${itemLocked?'Unlock this item':'Lock this item'}">${itemLocked?'🔓':'🔒'}</button>` : ''}${canEditBudget() ? `<button class="icon-btn">✕</button>` : ''}</span>
+          <span class="del">${canEditBudget() ? `<button class="icon-btn edit-item" title="Edit"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-1px"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button>` : ''}${isOwner() ? `<button class="icon-btn item-lock-toggle" title="${itemLocked?'Unlock this item':'Lock this item'}">${itemLocked?'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 7.75-3.9"/></svg>':'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'}</button>` : ''}${canEditBudget() ? `<button class="icon-btn">✕</button>` : ''}</span>
         `;
         const editBtn = r.querySelector('.edit-item');
         if(editBtn) editBtn.onclick = () => { state.editingItemId = it.id; renderMain(); };
@@ -4348,7 +4348,7 @@ function renderStageNode(stage){
           <input class="bi-qty" type="number" inputmode="decimal" step="0.001" placeholder="Qty">
           <input class="bi-rate" type="number" inputmode="decimal" step="0.01" placeholder="Rate ₹">
           <span class="bi-amount-preview">—</span>
-          <span class="bi-add-actions"><button class="icon-btn bi-save" title="Add">✓</button><button class="icon-btn bi-cancel" title="Cancel">✕</button></span>
+          <span class="bi-add-actions"><button class="icon-btn bi-save" title="Add"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="display:inline-block;vertical-align:-2px"><path d="M20 6 9 17l-5-5"/></svg></button><button class="icon-btn bi-cancel" title="Cancel">✕</button></span>
         `;
         const descWrap = addRow.querySelector('.bi-desc-wrap');
         const descInput = addRow.querySelector('.bi-desc');
@@ -4506,7 +4506,7 @@ function renderStageAddRow(projectId, parentId){
       <label><input type="radio" name="stageAddType${parentId||'root'}" value="internal"> Internal</label>
     </div>
     <div class="bi-add-actions">
-      <button class="icon-btn bi-save" title="Add">✓</button>
+      <button class="icon-btn bi-save" title="Add"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="display:inline-block;vertical-align:-2px"><path d="M20 6 9 17l-5-5"/></svg></button>
       <button class="icon-btn bi-cancel" title="Cancel">✕</button>
     </div>
   `;
@@ -4678,7 +4678,7 @@ function updateCopyToolbar(){
   const n = state.selectedItemIds.size;
   if(!n){ el.innerHTML = ''; return; }
   el.innerHTML = `
-    <button class="btn tiny" id="copySelectedBtn">📋 Copy (${n})</button>
+    <button class="btn tiny" id="copySelectedBtn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg> Copy (${n})</button>
     <button class="btn tiny" id="clearSelectionBtn">Clear</button>
   `;
   document.getElementById('copySelectedBtn').onclick = copySelectedItems;
