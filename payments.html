@@ -139,7 +139,7 @@ function download(name, text, mime) {
 }
 
 const STATUS_LABEL = { draft: 'Draft', submitted: 'With CEO', approved: 'Approved', rejected: 'Rejected', batched: 'In batch', verified: 'Verified', released: 'At bank', paid: 'Paid', cancelled: 'Cancelled' };
-const BLABEL = { open: 'Open', submitted: 'With partner office', verified: 'Verified', released: 'At bank', completed: 'Completed', cancelled: 'Cancelled' };
+const BLABEL = { open: 'Open', submitted: 'With JH', verified: 'Verified', released: 'At bank', completed: 'Completed', cancelled: 'Cancelled' };
 const BCLS = { open: 'draft', completed: 'paid' };
 const badgeB = s => `<span class="badge b-${esc(BCLS[s] || s)}">${esc(BLABEL[s] || s)}</span>`;
 const badge = s => `<span class="badge b-${esc(s)}">${esc(STATUS_LABEL[s] || s)}</span>`;
@@ -184,7 +184,7 @@ function showLogin(msg) {
     <div class="field"><label>Email</label><input id="lg-email" type="email" autocomplete="username"></div>
     <div class="field"><label>Password</label><input id="lg-pass" type="password" autocomplete="current-password"></div>
     <button class="btn p" style="width:100%;padding:11px" data-act="login">Sign in</button>
-    <p class="mut" style="font-size:12px;margin:14px 0 0">Use the same login as CAMELS. CEO and partner-office users are created by Jonathan.</p>
+    <p class="mut" style="font-size:12px;margin:14px 0 0">Use the same login as CAMELS. CEO and JH users are created by Jonathan.</p>
   </div></div>`;
   const go = e => { if (e.key === 'Enter') ACT.login(); };
   $('#lg-email').addEventListener('keydown', go); $('#lg-pass').addEventListener('keydown', go);
@@ -239,7 +239,7 @@ function renderShell() {
   const tabs = tabsFor();
   $('#app').innerHTML = `<div class="hdr"><div class="top">
       <div class="brand">CCI Payments<small>Approvals &amp; release control</small></div>
-      <div class="who"><span>${esc(S.me.name)}</span><span class="role">${esc(role() === 'partner' ? 'partner office' : role())}</span>
+      <div class="who"><span>${esc(S.me.name)}</span><span class="role">${esc(role() === 'partner' ? 'JH' : role())}</span>
         ${(role() === 'owner' || role() === 'accounts') ? '<a class="btn s" href="index.html" style="text-decoration:none">&larr; CAMELS</a>' : ''}<button class="btn s" data-act="reload">Refresh</button><button class="btn s" data-act="logout">Sign out</button></div></div>
     <div class="tabs">${tabs.map(([k, l, n]) => `<button class="tab ${S.tab === k ? 'on' : ''}" data-act="tab" data-t="${k}">${esc(l)}${n ? `<span class="n">${n}</span>` : ''}</button>`).join('')}</div></div>
     <main id="main"></main>`;
@@ -275,7 +275,7 @@ function vDash() {
   const cards = [
     kp('Drafts', c(['draft']), 'reqs'), kp('With CEO', c(['submitted']), role() === 'partner' ? 'dash' : 'appr'),
     kp('Approved, not batched', c(['approved']), 'batches', r => r.approved_amount),
-    kp('In batch / with partner office', c(['batched']), role() === 'partner' ? 'verify' : 'batches', r => r.approved_amount),
+    kp('In batch / with JH', c(['batched']), role() === 'partner' ? 'verify' : 'batches', r => r.approved_amount),
     kp('Verified, to release', c(['verified']), 'batches', r => r.approved_amount),
     kp('At bank, awaiting UTR', c(['released']), 'batches', r => r.approved_amount)
   ].join('');
@@ -315,7 +315,7 @@ function vReqs() {
       <td>${esc(r.project_name)}</td><td><b>${esc(r.payee_name)}</b><div class="mut" style="font-size:12px">${esc(CATS[r.category] || r.category)}${r.bill_ref ? ' · ' + esc(r.bill_ref) : ''}</div></td>
       <td class="r amt">${inr(r.gross_amount)}</td><td class="r amt">${num(r.tds_amount) ? inr(r.tds_amount) : '—'}</td><td class="r amt"><b>${inr(r.net_amount)}</b>${r.approved_amount && num(r.approved_amount) !== num(r.net_amount) ? `<div class="bad" style="font-size:11px">approved ${inr(r.approved_amount)}</div>` : ''}</td>
       <td>${gate}${r.priority === 'urgent' ? ' <span class="badge b-warn">Urgent</span>' : ''}</td>
-      <td>${badge(r.status)}${r.ceo_remark && ['draft', 'rejected'].includes(r.status) ? `<div class="bad" style="font-size:11px;max-width:200px">CEO: ${esc(r.ceo_remark)}</div>` : ''}${r.fail_note && r.status === 'approved' ? `<div class="bad" style="font-size:11px">Bank: ${esc(r.fail_note)}</div>` : ''}${r.partner_status === 'returned' && r.status === 'approved' ? `<div class="bad" style="font-size:11px">Partner office: ${esc(r.partner_remark)}</div>` : ''}</td>
+      <td>${badge(r.status)}${r.is_backfill ? ' <span class="badge b-open">Past entry</span>' : ''}${r.ceo_remark && ['draft', 'rejected'].includes(r.status) ? `<div class="bad" style="font-size:11px;max-width:200px">CEO: ${esc(r.ceo_remark)}</div>` : ''}${r.fail_note && r.status === 'approved' ? `<div class="bad" style="font-size:11px">Bank: ${esc(r.fail_note)}</div>` : ''}${r.partner_status === 'returned' && r.status === 'approved' ? `<div class="bad" style="font-size:11px">Partner office: ${esc(r.partner_remark)}</div>` : ''}</td>
       <td style="white-space:nowrap">${r.status === 'draft' ? `<button class="btn s" data-act="editreq" data-id="${r.id}">Edit</button> <button class="btn s" data-act="delreq" data-id="${r.id}">Delete</button>` : ''}${isOwner() && ['submitted', 'approved'].includes(r.status) ? `<button class="btn s" data-act="cancelreq" data-id="${r.id}">Cancel</button>` : ''}</td></tr>`;
   }).join('');
   return `<div class="row" style="margin-bottom:12px"><h2>Payment requests</h2><span class="sp"></span>
@@ -447,15 +447,15 @@ function batchCard(b) {
     }).join('');
     const colspanHead = b.status === 'open' ? '<th></th>' : '';
     const act = {
-      open: `<button class="btn" data-act="rmlines" data-id="${b.id}">Remove ticked lines</button><button class="btn p" data-act="bsubmit" data-id="${b.id}">Send to partner office for verification</button>`,
-      submitted: `<span class="note" style="margin:0">Waiting for partner office verification. Lines cannot change.</span>`,
+      open: `<button class="btn" data-act="rmlines" data-id="${b.id}">Remove ticked lines</button><button class="btn p" data-act="bsubmit" data-id="${b.id}">Send to JH for verification</button>`,
+      submitted: `<span class="note" style="margin:0">Waiting for JH verification. Lines cannot change.</span>`,
       verified: `<button class="btn p" data-act="bankfile" data-id="${b.id}">1. Generate bank upload file</button><input id="bref-${b.id}" placeholder="Bank upload ref (optional)" style="width:220px"><button class="btn g" data-act="release" data-id="${b.id}">2. Mark uploaded to bank</button>`,
       released: `<button class="btn g" data-act="saveutr" data-id="${b.id}">Save UTRs</button><label class="btn">Match bank statement… <input type="file" accept=".csv,.xlsx,.xls" data-act="stmt" data-id="${b.id}" style="display:none"></label><button class="btn" data-act="bankfile" data-id="${b.id}">Re-download bank file</button>`,
       completed: `<span class="good">Completed ${fdt(b.completed_at)}</span>`
     }[b.status] || '';
     body = `<div style="margin-top:12px"><div class="tw"><table><thead><tr>${colspanHead}<th>Ref</th><th>Project</th><th>Payee</th><th class="r">Amount</th><th>Mode</th><th>Status</th>${b.status === 'released' ? '<th>UTR &amp; date</th>' : (b.status === 'completed' ? '<th>UTR</th>' : '')}</tr></thead><tbody>${rows}</tbody></table></div>
-      ${b.partner_remark ? `<div class="note" style="margin-top:10px"><b>Partner office remark:</b> ${esc(b.partner_remark)}</div>` : ''}
-      ${b.status === 'released' ? '<div class="note blue" style="margin-top:10px">The partner authorises this upload in the bank portal with his own token. Record the UTRs once the bank confirms. If the bank rejects a line, press <b>Failed</b> to send it back for re-batching.</div>' : ''}
+      ${b.partner_remark ? `<div class="note" style="margin-top:10px"><b>JH remark:</b> ${esc(b.partner_remark)}</div>` : ''}
+      ${b.status === 'released' ? '<div class="note blue" style="margin-top:10px">Upload the file in the bank portal as per the bank process. Record the UTRs once the bank confirms. If the bank rejects a line, press <b>Failed</b> to send it back for re-batching.</div>' : ''}
       <div class="row" style="margin-top:12px"><button class="btn" data-act="xsheet" data-id="${b.id}">Payment sheet (Excel)</button><button class="btn" data-act="xtally" data-id="${b.id}">Tally vouchers (XML)</button><span class="sp"></span>${act}</div>
       <details style="margin-top:10px"><summary class="mut">Tally ledger names used in this batch (must match Tally exactly)</summary><div style="margin-top:6px;font-size:12.5px">Bank ledger: <b>${esc((bank && bank.tally_ledger) || '(set under Admin → Bank accounts)')}</b><br>Party ledgers: ${ledgers.map(esc).join(' · ')}</div></details></div>`;
   }
@@ -463,7 +463,7 @@ function batchCard(b) {
     <div class="mut">${esc(bank ? bank.label : '')} · ${fdate(b.pay_date)} · ${L.length} line${L.length === 1 ? '' : 's'} · <b class="amt" style="color:var(--ink)">${inr(total)}</b></div></div>${body}</div>`;
 }
 
-/* ---------- partner office ---------- */
+/* ---------- JH ---------- */
 function vVerify() {
   const pend = S.batches.filter(b => b.status === 'submitted');
   const hist = S.batches.filter(b => ['verified', 'released', 'completed'].includes(b.status)).slice(0, 15);
@@ -492,7 +492,7 @@ function vVerify() {
       <button class="btn g" data-act="psubmit" data-id="${b.id}" ${nVer === L.length ? '' : 'disabled'}>Submit verification</button></div></div>`;
   }).join('');
   return `<div class="row" style="margin-bottom:10px"><h2>Batches awaiting your verification</h2></div>
-    <div class="note blue"><b>Control reminder:</b> verifying here confirms the payments are valid. You still authorise the actual bank transfer in the bank's own portal using <b>your own token / OTP</b>. Never share an OTP with anyone — Accounts only uploads the file as maker.</div>
+    <div class="note blue">Verifying here confirms each payment is valid and CEO-approved. Accounts handles the bank file, upload and payment records.</div>
     ${cards || '<div class="card empty">No batches are waiting for verification.</div>'}
     <h3 style="margin:22px 0 8px">Recently verified</h3><div class="card"><div class="tw"><table><thead><tr><th>Batch</th><th>Bank</th><th>Pay date</th><th class="r">Lines</th><th class="r">Amount</th><th>Status</th><th>Verified</th></tr></thead><tbody>
     ${hist.map(b => { const L = linesOf(b.id); return `<tr><td class="mono">${esc(b.batch_no)}</td><td>${esc((bankOf(b.bank_account_id) || {}).label || '')}</td><td>${fdate(b.pay_date)}</td><td class="r">${L.length}</td><td class="r amt">${inr(sum(L, r => r.approved_amount))}</td><td>${badgeB(b.status)}</td><td>${fdt(b.verified_at)}</td></tr>`; }).join('') || '<tr><td colspan="7" class="empty">None yet.</td></tr>'}</tbody></table></div></div>`;
@@ -518,6 +518,19 @@ function vInflow() {
     <div class="grid3"><div class="field"><label>Project</label><select id="ad-project"><option value="">Select…</option>${proj.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div>
       <div class="field"><label>Amount (+ adds headroom, − reduces)</label><input id="ad-amt" type="number" step="0.01"></div><div class="field"><label>Reason</label><input id="ad-reason" placeholder="e.g. Cash wages paid on site 02 Nov"></div></div>
     <button class="btn p" data-act="addadj">Add adjustment</button></div>` : ''}
+  <div class="card"><h3 style="margin-bottom:8px">Enter past payments (already paid)</h3>
+    <p class="mut" style="font-size:12.5px;margin:0 0 8px">For outflows already made, so each project's headroom is correct. These skip the approval flow, are marked <b>Past entry</b> and are logged. Payments dated before a project's opening-position date are already inside that opening figure and are not counted again.</p>
+    <div class="grid3"><div class="field"><label>Project</label><select id="pp-project"><option value="">Select…</option>${proj.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div>
+      <div class="field"><label>Payee (pick, or type a name)</label><input id="pp-payee" list="ppList" autocomplete="off"><datalist id="ppList">${S.payees.filter(p => p.is_active).map(p => `<option value="${esc(p.name)}">`).join('')}</datalist></div>
+      <div class="field"><label>Category</label><select id="pp-cat">${Object.entries(CATS).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('')}</select></div></div>
+    <div class="grid3"><div class="field"><label>Gross amount (₹)</label><input id="pp-gross" type="number" step="0.01" min="0"></div>
+      <div class="field"><label>TDS (₹)</label><input id="pp-tds" type="number" step="0.01" min="0" value="0"></div>
+      <div class="field"><label>Date paid</label><input id="pp-date" type="date" value="${todayISO()}" max="${todayISO()}"></div></div>
+    <div class="grid3"><div class="field"><label>Paid from</label><select id="pp-bank"><option value="">—</option>${S.banks.map(b => `<option value="${b.id}">${esc(b.label)}</option>`).join('')}</select></div>
+      <div class="field"><label>UTR / reference (optional)</label><input id="pp-utr"></div>
+      <div class="field"><label>Bill ref / note (optional)</label><input id="pp-note"></div></div>
+    <button class="btn p" data-act="addpast">Add past payment</button>
+    ${(() => { const L = S.reqs.filter(r => r.is_backfill && r.status === 'paid').slice(0, 12); return L.length ? `<div class="tw" style="margin-top:12px"><table><thead><tr><th>Paid</th><th>Project</th><th>Payee</th><th class="r">Net paid</th><th>UTR</th><th></th></tr></thead><tbody>${L.map(r => `<tr><td>${fdate(r.paid_date)}</td><td>${esc(r.project_name)}</td><td>${esc(r.payee_name)}</td><td class="r amt">${inr(r.paid_amount)}</td><td class="mono">${esc(r.utr || '')}</td><td><button class="btn s" data-act="rmpast" data-id="${r.id}">Remove</button></td></tr>`).join('')}</tbody></table></div>` : ''; })()}</div>
   <div class="grid2"><div class="card"><h3 style="margin-bottom:8px">Recent receipts</h3><div class="tw"><table><thead><tr><th>Date</th><th>Project</th><th class="r">Amount</th><th>Ref</th></tr></thead><tbody>
     ${S.receipts.map(r => `<tr><td>${fdate(r.receipt_date)}</td><td>${esc((proj.find(p => p.id === r.project_id) || {}).name || '')}</td><td class="r amt">${inr(r.amount)}</td><td>${esc(r.notes || '')}</td></tr>`).join('') || '<tr><td colspan="4" class="empty">None yet.</td></tr>'}</tbody></table></div></div>
   <div class="card"><h3 style="margin-bottom:8px">Adjustments &amp; openings</h3><div class="tw"><table><thead><tr><th>Date</th><th>Project</th><th class="r">Amount</th><th>Reason</th></tr></thead><tbody>
@@ -533,7 +546,7 @@ function vPayees() {
   const miss = S.payees.filter(p => p.is_active && (!p.account_no || !p.ifsc)).length;
   return `<div class="row" style="margin-bottom:10px"><h2>Payees</h2><span class="sp"></span><button class="btn" data-act="syncpayees">Import CAMELS subcontractors</button><button class="btn p" data-act="newpayee">+ New payee</button></div>
   ${miss ? `<div class="note">${miss} active payee${miss > 1 ? 's' : ''} have no valid bank account / IFSC and cannot be batched until fixed.</div>` : ''}
-  <div class="note blue">Changing a payee's bank account or IFSC is logged, and the partner office sees a warning on any payment to that payee for 30 days.</div>
+  <div class="note blue">Changing a payee's bank account or IFSC is logged, and JH sees a warning on any payment to that payee for 30 days.</div>
   <div class="card"><input id="pq" placeholder="Search payee…" value="${esc(S.ui.payeeQ)}" data-live="payeeq" style="max-width:320px;margin-bottom:10px">
   <div class="tw"><table><thead><tr><th>Name</th><th>Type</th><th>Tally ledger</th><th>Bank</th><th>IFSC</th><th></th></tr></thead><tbody>
   ${L.slice(0, 300).map(p => `<tr><td><b>${esc(p.name)}</b>${p.is_active ? '' : ' <span class="badge b-cancelled">Inactive</span>'}</td><td>${esc(p.kind)}</td><td>${esc(p.tally_ledger_name || '')}</td>
@@ -564,18 +577,18 @@ function vAudit() {
 
 /* ---------- admin ---------- */
 function vAdmin() {
-  const roleName = { owner: 'Owner', accounts: 'Accounts', ceo: 'CEO', partner: 'Partner office' };
+  const roleName = { owner: 'Owner', accounts: 'Accounts', ceo: 'CEO', partner: 'JH' };
   return `<div class="row" style="margin-bottom:10px"><h2>Admin</h2></div>
   <div class="card"><h3 style="margin-bottom:8px">Who can do what</h3>
     <div class="tw"><table><thead><tr><th>Name</th><th>Role</th><th>Status</th><th></th></tr></thead><tbody>
     ${S.users.map(u => `<tr><td><b>${esc(u.full_name)}</b></td><td>${esc(roleName[u.role] || u.role)}</td><td>${u.is_active ? '<span class="badge b-approved">Active</span>' : '<span class="badge b-cancelled">Revoked</span>'}</td>
       <td>${u.user_id === (S.me && S.me.user_id) || u.role === 'owner' ? '' : `<button class="btn s" data-act="toggleuser" data-id="${u.user_id}" data-on="${u.is_active ? 0 : 1}">${u.is_active ? 'Revoke access' : 'Restore access'}</button>`}</td></tr>`).join('')}</tbody></table></div>
-    <h3 style="margin:16px 0 6px">Give access to the CEO or the partner's office</h3>
+    <h3 style="margin:16px 0 6px">Give access to the CEO or JH</h3>
     <ol class="mut" style="font-size:12.5px;margin:0 0 10px;padding-left:18px"><li>In Supabase → Authentication → Users, click <b>Add user</b>, enter their e-mail and a password, tick <b>Auto Confirm User</b>.</li><li>Come back here and enter the same e-mail below with the role.</li></ol>
     <div class="grid3"><div class="field"><label>Login e-mail</label><input id="gr-email" type="email"></div><div class="field"><label>Full name</label><input id="gr-name"></div>
-      <div class="field"><label>Role</label><select id="gr-role"><option value="ceo">CEO — approves every payment</option><option value="partner">Partner office — verifies batches</option><option value="accounts">Accounts — raises requests, batches, exports</option></select></div></div>
+      <div class="field"><label>Role</label><select id="gr-role"><option value="ceo">CEO — approves every payment</option><option value="partner">JH — verifies batches</option><option value="accounts">Accounts — raises requests, batches, exports</option></select></div></div>
     <button class="btn p" data-act="grant">Grant access</button>
-    <p class="mut" style="font-size:12px;margin:10px 0 0">CEO and partner-office users see only payment amounts, payees' names, approvals and the audit trail — not CAMELS bills, subcontractor bank details or bank statements.</p></div>
+    <p class="mut" style="font-size:12px;margin:10px 0 0">CEO and JH users see only payment amounts, payees' names, approvals and the audit trail — not CAMELS bills, subcontractor bank details or bank statements.</p></div>
   <div class="card"><h3 style="margin-bottom:8px">Bank accounts</h3><div class="tw"><table><thead><tr><th>Code</th><th>Label</th><th>Type</th><th>OD limit (₹)</th><th>Tally ledger name</th><th>Active</th><th></th></tr></thead><tbody>
     ${S.banks.map(b => `<tr><td class="mono">${esc(b.code)}</td><td><input id="bk-l-${b.id}" value="${esc(b.label)}"></td><td><select id="bk-k-${b.id}"><option value="current" ${b.account_kind === 'current' ? 'selected' : ''}>Current</option><option value="od" ${b.account_kind === 'od' ? 'selected' : ''}>OD / CC</option></select></td>
       <td><input id="bk-o-${b.id}" type="number" value="${esc(b.od_limit ?? '')}"></td><td><input id="bk-t-${b.id}" value="${esc(b.tally_ledger || '')}"></td><td><select id="bk-a-${b.id}"><option value="1">Yes</option><option value="0" ${b.is_active ? '' : 'selected'}>No</option></select></td>
@@ -737,7 +750,7 @@ const ACT = {
   togglebatch(el) { S.ui.openBatch = S.ui.openBatch === el.dataset.id ? null : el.dataset.id; renderMain(); },
   selrm(el) { S.ui.rm = S.ui.rm || new Set(); el.checked ? S.ui.rm.add(el.dataset.id) : S.ui.rm.delete(el.dataset.id); },
   async rmlines(el) { const ids = [...(S.ui.rm || [])]; if (!ids.length) return toast('Tick the lines to remove', true); await guard(async () => { await rpc('pay_batch_edit', { p_batch: el.dataset.id, p_remove: ids }); S.ui.rm = new Set(); toast('Removed'); await refresh(); }); },
-  async bsubmit(el) { if (!confirm('Send this batch to the partner office for verification? Lines cannot be changed afterwards.')) return; await guard(async () => { await rpc('pay_batch_submit', { p_batch: el.dataset.id }); toast('Sent for verification'); await refresh(); }); },
+  async bsubmit(el) { if (!confirm('Send this batch to JH for verification? Lines cannot be changed afterwards.')) return; await guard(async () => { await rpc('pay_batch_submit', { p_batch: el.dataset.id }); toast('Sent for verification'); await refresh(); }); },
   async xsheet(el) { const b = batchOf(el.dataset.id); await guard(async () => { await rpc('pay_log_export', { p_batch: b.id, p_kind: 'sheet' }); sheetXlsx(b); }); },
   async xtally(el) { const b = batchOf(el.dataset.id); await guard(async () => { await rpc('pay_log_export', { p_batch: b.id, p_kind: 'tally' }); download(`${b.batch_no}_tally_vouchers.xml`, tallyXml(b), 'application/xml'); toast('Tally file downloaded — test-import in a test company first'); await refresh(); }); },
   async bankfile(el) {
@@ -788,6 +801,21 @@ const ACT = {
     const project_id = $('#op-project').value; if (!project_id || $('#op-amt').value === '') return toast('Project and opening amount are required', true);
     if (!confirm('Set the opening position for this project? This resets its headroom baseline and is logged.')) return;
     await guard(async () => { const { data: { user } } = await sb.auth.getUser(); await qry(sb.from('pay_project_opening').upsert({ project_id, opening_net: num($('#op-amt').value), as_of: $('#op-date').value, note: $('#op-note').value.trim() || null, set_by: user.id, set_at: new Date().toISOString() })); toast('Opening position saved'); await refresh(); });
+  },
+  async addpast() {
+    const project = $('#pp-project').value, gross = num($('#pp-gross').value), tds = num($('#pp-tds').value), d = $('#pp-date').value, lbl = $('#pp-payee').value.trim();
+    if (!project || !lbl || gross <= 0 || !d) return toast('Project, payee, amount and date paid are required', true);
+    const py = S.payees.find(x => x.name === lbl);
+    await guard(async () => {
+      const res = await rpc('pay_backfill_payment', { p_project: project, p_payee_id: py ? py.id : null, p_payee_name: lbl, p_category: $('#pp-cat').value, p_gross: gross, p_tds: tds,
+        p_paid_date: d, p_bank_account: $('#pp-bank').value || null, p_utr: $('#pp-utr').value.trim() || null, p_bill_ref: $('#pp-note').value.trim() || null, p_note: null });
+      toast(res.counted ? 'Past payment added — headroom updated' : 'Saved, but dated before the opening position so it is not counted again', !res.counted);
+      await refresh();
+    });
+  },
+  async rmpast(el) {
+    const why = prompt('Why is this past entry being removed?'); if (!why || why.trim().length < 3) return;
+    await guard(async () => { await rpc('pay_cancel_backfill', { p_request: el.dataset.id, p_reason: why.trim() }); toast('Past entry removed'); await refresh(); });
   },
   async addadj() {
     const project_id = $('#ad-project').value, amount = num($('#ad-amt').value), reason = $('#ad-reason').value.trim();
