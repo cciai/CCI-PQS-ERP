@@ -139,6 +139,9 @@ function download(name, text, mime) {
 }
 
 const STATUS_LABEL = { draft: 'Draft', submitted: 'With CEO', approved: 'Approved', rejected: 'Rejected', batched: 'In batch', verified: 'Verified', released: 'At bank', paid: 'Paid', cancelled: 'Cancelled' };
+const BLABEL = { open: 'Open', submitted: 'With partner office', verified: 'Verified', released: 'At bank', completed: 'Completed', cancelled: 'Cancelled' };
+const BCLS = { open: 'draft', completed: 'paid' };
+const badgeB = s => `<span class="badge b-${esc(BCLS[s] || s)}">${esc(BLABEL[s] || s)}</span>`;
 const badge = s => `<span class="badge b-${esc(s)}">${esc(STATUS_LABEL[s] || s)}</span>`;
 const DEV_REASONS = { client_inflow_delayed: 'Client inflow delayed', statutory_due: 'Statutory dues (GST/PF/ESI/TDS)', wages_critical: 'Labour wages critical', material_critical: 'Material critical for progress', advance_to_secure: 'Advance to secure rate/supply', other: 'Other (explain)' };
 const CATS = { labour: 'Labour', material: 'Material', subcontract: 'Subcontract', equipment: 'Equipment / rental', statutory: 'Statutory', overhead: 'Overhead', other: 'Other' };
@@ -237,7 +240,7 @@ function renderShell() {
   $('#app').innerHTML = `<div class="hdr"><div class="top">
       <div class="brand">CCI Payments<small>Approvals &amp; release control</small></div>
       <div class="who"><span>${esc(S.me.name)}</span><span class="role">${esc(role() === 'partner' ? 'partner office' : role())}</span>
-        <button class="btn s" data-act="reload">Refresh</button><button class="btn s" data-act="logout">Sign out</button></div></div>
+        ${(role() === 'owner' || role() === 'accounts') ? '<a class="btn s" href="index.html" style="text-decoration:none">&larr; CAMELS</a>' : ''}<button class="btn s" data-act="reload">Refresh</button><button class="btn s" data-act="logout">Sign out</button></div></div>
     <div class="tabs">${tabs.map(([k, l, n]) => `<button class="tab ${S.tab === k ? 'on' : ''}" data-act="tab" data-t="${k}">${esc(l)}${n ? `<span class="n">${n}</span>` : ''}</button>`).join('')}</div></div>
     <main id="main"></main>`;
   renderMain();
@@ -456,7 +459,7 @@ function batchCard(b) {
       <div class="row" style="margin-top:12px"><button class="btn" data-act="xsheet" data-id="${b.id}">Payment sheet (Excel)</button><button class="btn" data-act="xtally" data-id="${b.id}">Tally vouchers (XML)</button><span class="sp"></span>${act}</div>
       <details style="margin-top:10px"><summary class="mut">Tally ledger names used in this batch (must match Tally exactly)</summary><div style="margin-top:6px;font-size:12.5px">Bank ledger: <b>${esc((bank && bank.tally_ledger) || '(set under Admin → Bank accounts)')}</b><br>Party ledgers: ${ledgers.map(esc).join(' · ')}</div></details></div>`;
   }
-  return `<div class="card"><div class="row" style="cursor:pointer" data-act="togglebatch" data-id="${b.id}"><div><span class="mono"><b>${esc(b.batch_no)}</b></span> ${badge(b.status)}</div><span class="sp"></span>
+  return `<div class="card"><div class="row" style="cursor:pointer" data-act="togglebatch" data-id="${b.id}"><div><span class="mono"><b>${esc(b.batch_no)}</b></span> ${badgeB(b.status)}</div><span class="sp"></span>
     <div class="mut">${esc(bank ? bank.label : '')} · ${fdate(b.pay_date)} · ${L.length} line${L.length === 1 ? '' : 's'} · <b class="amt" style="color:var(--ink)">${inr(total)}</b></div></div>${body}</div>`;
 }
 
@@ -492,7 +495,7 @@ function vVerify() {
     <div class="note blue"><b>Control reminder:</b> verifying here confirms the payments are valid. You still authorise the actual bank transfer in the bank's own portal using <b>your own token / OTP</b>. Never share an OTP with anyone — Accounts only uploads the file as maker.</div>
     ${cards || '<div class="card empty">No batches are waiting for verification.</div>'}
     <h3 style="margin:22px 0 8px">Recently verified</h3><div class="card"><div class="tw"><table><thead><tr><th>Batch</th><th>Bank</th><th>Pay date</th><th class="r">Lines</th><th class="r">Amount</th><th>Status</th><th>Verified</th></tr></thead><tbody>
-    ${hist.map(b => { const L = linesOf(b.id); return `<tr><td class="mono">${esc(b.batch_no)}</td><td>${esc((bankOf(b.bank_account_id) || {}).label || '')}</td><td>${fdate(b.pay_date)}</td><td class="r">${L.length}</td><td class="r amt">${inr(sum(L, r => r.approved_amount))}</td><td>${badge(b.status)}</td><td>${fdt(b.verified_at)}</td></tr>`; }).join('') || '<tr><td colspan="7" class="empty">None yet.</td></tr>'}</tbody></table></div></div>`;
+    ${hist.map(b => { const L = linesOf(b.id); return `<tr><td class="mono">${esc(b.batch_no)}</td><td>${esc((bankOf(b.bank_account_id) || {}).label || '')}</td><td>${fdate(b.pay_date)}</td><td class="r">${L.length}</td><td class="r amt">${inr(sum(L, r => r.approved_amount))}</td><td>${badgeB(b.status)}</td><td>${fdt(b.verified_at)}</td></tr>`; }).join('') || '<tr><td colspan="7" class="empty">None yet.</td></tr>'}</tbody></table></div></div>`;
 }
 
 /* ---------- inflows & limits ---------- */
