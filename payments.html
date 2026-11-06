@@ -97,6 +97,7 @@ textarea{min-height:60px;resize:vertical}
 .kv{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:13px}.kv span:nth-child(odd){color:var(--steel)}
 .empty{padding:28px;text-align:center;color:var(--steel)}
 details>summary{cursor:pointer;font-weight:600}
+.gtbl td{padding:3px 4px;vertical-align:middle}.gtbl input,.gtbl select{width:100%;padding:6px 7px;font-size:13px}.gtbl select:disabled{opacity:.35}.gtbl select[data-c=p]{min-width:150px}.gtbl select[data-c=c]{min-width:125px}.gtbl select[data-c=pr]{min-width:95px}.gtbl select[data-c=dr]{min-width:190px}.gtbl select[data-c=db]{min-width:150px}.gtbl th{white-space:nowrap}
 </style>
 </head>
 <body>
@@ -250,6 +251,7 @@ async function renderMain() {
   const V = { dash: vDash, reqs: vReqs, appr: vAppr, batches: vBatches, inflow: vInflow, payees: vPayees, audit: vAudit, admin: vAdmin, verify: vVerify };
   if (S.tab === 'audit' && !S.audit.length) { await guard(async () => { S.audit = await qry(sb.from('pay_audit').select('*').order('at', { ascending: false }).limit(500)); }); }
   m.innerHTML = (V[S.tab] || vDash)();
+  if (S.tab === 'reqs' && S.ui.gridOpen) gUpdate();
 }
 
 /* ---------- derived numbers ---------- */
@@ -320,14 +322,109 @@ function vReqs() {
   }).join('');
   return `<div class="row" style="margin-bottom:12px"><h2>Payment requests</h2><span class="sp"></span>
       ${isOwner() ? `<button class="btn a" data-act="submitsel" ${f.sel.size ? '' : 'disabled'}>Submit ${f.sel.size || ''} to CEO</button>` : ''}
+      <button class="btn ${S.ui.gridOpen ? 'a' : ''}" data-act="gridtoggle">${S.ui.gridOpen ? 'Close grid' : '▦ Excel-style entry'}</button>
       <button class="btn p" data-act="newreq">+ New request</button></div>
     ${isOwner() ? '<div class="note blue">Accounts raises drafts; you review and submit them to the CEO. Tick drafts and press <b>Submit to CEO</b>.</div>' : '<div class="note blue">Raise requests here. Jonathan reviews and submits them to the CEO — you do not need to e-mail payment sheets any more.</div>'}
+    ${S.ui.gridOpen ? vGrid() : ''}
     <div class="card"><div class="row" style="margin-bottom:10px"><div class="chips">${sts.map(s => `<button class="chip ${f.status === s ? 'on' : ''}" data-act="fstatus" data-s="${s}">${s === 'all' ? 'All' : STATUS_LABEL[s]}</button>`).join('')}</div><span class="sp"></span>
       <select id="f-project" style="width:auto" data-act="fproject"><option value="">All projects</option>${S.projects.map(p => `<option value="${p.id}" ${f.project === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
       <input id="f-q" style="width:200px" placeholder="Search payee / ref / bill" value="${esc(f.q)}" data-live="fq"></div>
     <div class="tw"><table><thead><tr><th>${isOwner() && drafts.length ? `<input type="checkbox" data-act="selalldraft">` : ''}</th><th>Ref</th><th>Project</th><th>Payee</th><th class="r">Gross</th><th class="r">TDS</th><th class="r">Net</th><th>Gate</th><th>Status</th><th></th></tr></thead>
     <tbody>${rows || '<tr><td colspan="10" class="empty">No requests match.</td></tr>'}</tbody></table></div>
     ${L.length > 400 ? `<p class="mut">Showing first 400 of ${L.length}. Narrow the filter.</p>` : ''}</div>`;
+}
+
+/* ---------- Excel-style quick entry ---------- */
+const GCOLS = ['p', 'y', 'c', 'bill', 'g', 't', 'd', 'pr'];
+const gBlank = () => ({ p: '', y: '', c: 'material', bill: '', g: '', t: '', d: '', pr: 'normal', dr: '', db: '' });
+function gRows() { if (!S.ui.grid) S.ui.grid = Array.from({ length: 8 }, gBlank); return S.ui.grid; }
+function gPayeeMap() {
+  const names = {}, labels = {};
+  S.payees.filter(p => p.is_active).forEach(p => { names[p.name] = (names[p.name] || 0) + 1; });
+  S.payees.filter(p => p.is_active).forEach(p => { labels[names[p.name] > 1 ? `${p.name} [${(p.account_no || '').slice(-4) || 'no a/c'}]` : p.name] = p.id; });
+  return labels;
+}
+function gPayeeId(label, labels) {
+  const v = (label || '').trim(); if (!v) return null; if (labels[v]) return labels[v];
+  const k = Object.keys(labels).find(x => x.toLowerCase() === v.toLowerCase()); return k ? labels[k] : null;
+}
+function gCalc() {
+  const labels = gPayeeMap(); const run = {};
+  return gRows().map(r => {
+    const empty = !r.p && !r.y && !r.g && !r.bill;
+    const net = num(r.g) - num(r.t);
+    const o = { empty, net, dev: false, ok: false, msg: '', payee: gPayeeId(r.y, labels) };
+    if (empty) return o;
+    if (!r.p) { o.msg = 'Select project'; return o; }
+    if (!o.payee) { o.msg = r.y ? 'Payee not in list' : 'Pick payee'; return o; }
+    if (num(r.g) <= 0 || net <= 0) { o.msg = 'Check amount'; return o; }
+    if (!(r.p in run)) run[r.p] = num((posOf(r.p) || {}).headroom) - pendingNet(r.p, null);
+    o.dev = net > Math.max(run[r.p], 0); run[r.p] -= net; o.ok = true; return o;
+  });
+}
+function gBodyHtml() {
+  const rows = gRows();
+  const labels = gPayeeMap();
+  const opts = Object.keys(labels).map(l => `<option value="${esc(l)}"></option>`).join('');
+  const sel = (i, c, list, cur, blank) => `<select data-live="g" data-r="${i}" data-c="${c}">${blank ? '<option value="">' + blank + '</option>' : ''}${list.map(([k, v]) => `<option value="${esc(k)}" ${cur === k ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select>`;
+  const inp = (i, c, t, cur, w) => `<input data-live="g" data-r="${i}" data-c="${c}" type="${t}" ${t === 'number' ? 'step="0.01" min="0"' : ''} value="${esc(cur)}" style="min-width:${w}px">`;
+  return `<datalist id="gpList">${opts}</datalist>` + rows.map((r, i) => `<tr>
+    <td class="mut">${i + 1}</td>
+    <td>${sel(i, 'p', S.projects.map(p => [p.id, p.name]), r.p, 'Project…')}</td>
+    <td>${inp(i, 'y', 'text', r.y, 190).replace('<input ', '<input list="gpList" autocomplete="off" ')}</td>
+    <td>${sel(i, 'c', Object.entries(CATS), r.c)}</td>
+    <td>${inp(i, 'bill', 'text', r.bill, 100)}</td>
+    <td>${inp(i, 'g', 'number', r.g, 100)}</td><td>${inp(i, 't', 'number', r.t, 80)}</td>
+    <td class="r amt" id="g-net-${i}">—</td>
+    <td>${inp(i, 'd', 'date', r.d, 120)}</td>
+    <td>${sel(i, 'pr', [['normal', 'Normal'], ['urgent', 'Urgent']], r.pr)}</td>
+    <td id="g-chk-${i}" style="white-space:nowrap"></td>
+    <td>${sel(i, 'dr', Object.entries(DEV_REASONS), r.dr, 'Reason…')}</td>
+    <td>${sel(i, 'db', S.banks.filter(b => b.is_active).map(b => [b.id, b.label]), r.db, 'Fund from…')}</td>
+    <td><button class="btn s" data-act="griddel" data-r="${i}" title="Remove row">×</button></td></tr>`).join('');
+}
+function vGrid() {
+  return `<div class="card" style="margin-bottom:14px"><div class="row" style="margin-bottom:8px"><h3 style="margin:0">Excel-style entry</h3><span class="sp"></span>
+    <button class="btn s" data-act="gridadd">+ 5 rows</button><button class="btn s" data-act="gridclear">Clear</button><button class="btn p" data-act="gridsave">Save all as drafts</button></div>
+    <p class="mut" style="font-size:12.5px;margin:0 0 8px">Type row by row, or <b>copy rows from Excel and paste into any cell</b> — columns in this order: Project, Payee, Category, Bill ref, Gross, TDS, Due date, Priority. Each row shows an inflow check. Deviation rows need a reason and a fund-from account. Rows are saved as drafts; you then submit them to the CEO.</p>
+    <div class="tw"><table class="gtbl"><thead><tr><th>#</th><th>Project</th><th>Payee</th><th>Category</th><th>Bill ref</th><th class="r">Gross ₹</th><th class="r">TDS ₹</th><th class="r">Net ₹</th><th>Due</th><th>Priority</th><th>Check</th><th>Deviation reason</th><th>Fund from</th><th></th></tr></thead>
+    <tbody id="grid-body">${gBodyHtml()}</tbody></table></div>
+    <div class="row" style="margin-top:8px"><span id="g-sum" class="mut"></span></div></div>`;
+}
+function gUpdate() {
+  const calc = gCalc(); let n = 0, tot = 0;
+  calc.forEach((o, i) => {
+    const net = $('#g-net-' + i), chk = $('#g-chk-' + i); if (!net || !chk) return;
+    net.textContent = o.empty || !(o.net > 0) ? '—' : inr(o.net);
+    chk.innerHTML = o.empty ? '' : o.ok ? (o.dev ? '<span class="badge b-dev">Deviation</span>' : '<span class="badge b-green">In inflow</span>') : `<span class="bad" style="font-size:12px">${esc(o.msg)}</span>`;
+    ['dr', 'db'].forEach(c => { const e = document.querySelector(`[data-r="${i}"][data-c="${c}"]`); if (e) e.disabled = !(o.ok && o.dev); });
+    if (o.ok) { n++; tot += o.net; }
+  });
+  const sm = $('#g-sum'); if (sm) sm.textContent = n ? `${n} row${n > 1 ? 's' : ''} ready · total net ${inr(tot)}` : 'No complete rows yet';
+}
+function gParseDate(v) {
+  v = (v || '').trim(); let m;
+  if ((m = v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/))) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+  if ((m = v.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/))) return `${m[3].length === 2 ? '20' + m[3] : m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+  return '';
+}
+function gPaste(el, text) {
+  const rows = gRows(); let r0 = +el.dataset.r, c0 = Math.max(GCOLS.indexOf(el.dataset.c), 0);
+  const lines = text.replace(/\r/g, '').split('\n').filter((l, i, a) => l.length || i < a.length - 1);
+  lines.forEach((line, li) => {
+    while (rows.length <= r0 + li) rows.push(gBlank());
+    const row = rows[r0 + li];
+    line.split('\t').forEach((cell, ci) => {
+      const col = GCOLS[c0 + ci]; if (!col) return; const v = cell.trim();
+      if (col === 'p') { const pr = S.projects.find(x => x.name.toLowerCase() === v.toLowerCase()) || S.projects.find(x => v && x.name.toLowerCase().includes(v.toLowerCase())); row.p = pr ? pr.id : ''; }
+      else if (col === 'c') { const k = Object.entries(CATS).find(([k2, l]) => k2 === v.toLowerCase() || l.toLowerCase().startsWith(v.toLowerCase()) && v); row.c = k ? k[0] : row.c; }
+      else if (col === 'g' || col === 't') row[col] = v.replace(/[₹,\s]/g, '');
+      else if (col === 'd') row.d = gParseDate(v);
+      else if (col === 'pr') row.pr = /urg/i.test(v) ? 'urgent' : 'normal';
+      else row[col] = v;
+    });
+  });
+  $('#grid-body').innerHTML = gBodyHtml(); gUpdate();
 }
 
 function reqFormHtml(r) {
@@ -802,6 +899,29 @@ const ACT = {
     if (!confirm('Set the opening position for this project? This resets its headroom baseline and is logged.')) return;
     await guard(async () => { const { data: { user } } = await sb.auth.getUser(); await qry(sb.from('pay_project_opening').upsert({ project_id, opening_net: num($('#op-amt').value), as_of: $('#op-date').value, note: $('#op-note').value.trim() || null, set_by: user.id, set_at: new Date().toISOString() })); toast('Opening position saved'); await refresh(); });
   },
+  gridtoggle() { S.ui.gridOpen = !S.ui.gridOpen; renderMain(); if (S.ui.gridOpen) gUpdate(); },
+  gridadd() { const g = gRows(); for (let i = 0; i < 5; i++) g.push(gBlank()); $('#grid-body').innerHTML = gBodyHtml(); gUpdate(); },
+  gridclear() { if (!confirm('Clear all rows in the grid?')) return; S.ui.grid = null; renderMain(); gUpdate(); },
+  griddel(el) { const g = gRows(); g.splice(+el.dataset.r, 1); if (!g.length) g.push(gBlank()); $('#grid-body').innerHTML = gBodyHtml(); gUpdate(); },
+  async gridsave() {
+    const g = gRows(), calc = gCalc(); const payload = [], idx = [], problems = [];
+    g.forEach((r, i) => {
+      const o = calc[i]; if (o.empty) return;
+      if (!o.ok) { problems.push(`Row ${i + 1}: ${o.msg}`); return; }
+      if (o.dev && (!r.dr || !r.db)) { problems.push(`Row ${i + 1}: deviation needs a reason and a fund-from account`); return; }
+      const py = payeeOf(o.payee);
+      payload.push({ project_id: r.p, payee_id: py.id, payee_name: py.name, category: r.c, bill_ref: r.bill.trim() || null, due_date: r.d || null, priority: r.pr,
+        gross_amount: num(r.g), tds_amount: num(r.t), other_deduction: 0, dev_reason_code: o.dev ? r.dr : null, dev_funding_account_id: o.dev ? r.db : null });
+      idx.push(i);
+    });
+    if (problems.length) { alert('Please fix these rows first (nothing was saved):\n\n' + problems.join('\n')); return; }
+    if (!payload.length) return toast('Nothing to save — fill at least one complete row', true);
+    await guard(async () => {
+      await qry(sb.from('pay_requests').insert(payload));
+      S.ui.grid = g.filter((_, i) => !idx.includes(i)); if (!S.ui.grid.length) S.ui.grid = null;
+      toast(`${payload.length} draft${payload.length > 1 ? 's' : ''} saved`); await refresh(); if (S.ui.gridOpen) gUpdate();
+    });
+  },
   async addpast() {
     const project = $('#pp-project').value, gross = num($('#pp-gross').value), tds = num($('#pp-tds').value), d = $('#pp-date').value, lbl = $('#pp-payee').value.trim();
     if (!project || !lbl || gross <= 0 || !d) return toast('Project, payee, amount and date paid are required', true);
@@ -864,7 +984,8 @@ document.addEventListener('change', e => {
 });
 document.addEventListener('input', e => {
   const el = e.target; const l = el.dataset && el.dataset.live; if (!l) return; const id = el.dataset.id;
-  if (l === 'gate') updateGate();
+  if (l === 'g') { gRows()[+el.dataset.r][el.dataset.c] = el.value; gUpdate(); }
+  else if (l === 'gate') updateGate();
   else if (l === 'fq') { S.ui.q = el.value; const pos = el.selectionStart; renderMain(); const n = $('#f-q'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } }
   else if (l === 'payeeq') { S.ui.payeeQ = el.value; const pos = el.selectionStart; renderMain(); const n = $('#pq'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } }
   else if (l === 'auditq') { S.ui.auditQ = el.value; const pos = el.selectionStart; renderMain(); const n = $('#aq'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } }
@@ -876,6 +997,12 @@ document.addEventListener('input', e => {
   else if (l === 'bankpick') S.ui.bankPick = el.value;
   else if (l === 'paydate') S.ui.payDate = el.value;
   else if (l === 'opfill') { const o = S.openings.find(x => x.project_id === el.value); if (o) { $('#op-amt').value = o.opening_net; $('#op-date').value = o.as_of; $('#op-note').value = o.note || ''; } }
+});
+
+document.addEventListener('paste', e => {
+  const el = e.target; if (!el.dataset || el.dataset.live !== 'g') return;
+  const t = (e.clipboardData || window.clipboardData).getData('text'); if (!/[\t\n]/.test(t.trim())) return;
+  e.preventDefault(); gPaste(el, t);
 });
 
 boot();
