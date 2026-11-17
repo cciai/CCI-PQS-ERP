@@ -39,6 +39,7 @@ main{max-width:1280px;margin:0 auto;padding:18px 16px 80px}
 .card.flag{border-left:4px solid var(--amber)}
 .card.dev{border-left:4px solid var(--red)}
 .card.ok{border-left:4px solid var(--green)}
+.testbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;background:#FFF1DB;border-bottom:2px solid #E0A340;padding:6px 22px;font-size:12.5px}
 .ctbl th,.ctbl td{padding:5px 8px;white-space:nowrap;font-size:13px}.ctbl td.wr{white-space:normal;min-width:150px;max-width:230px}
 .ctbl tr.dv td{background:#FFF4F2}.ctbl tr.pg td{background:var(--paper-2);font-weight:600}
 .ctbl input.ci{width:104px;text-align:right;padding:3px 6px}.ctbl .btn.s{padding:3px 9px}
@@ -157,7 +158,9 @@ const S = {
   receipts: [], adjustments: [], openings: [],
   ui: { status: 'all', project: '', q: '', sel: new Set(), bsel: new Set(), csel: new Set(), camt: {}, bpay: {}, panel: {}, openBatch: null, pdec: {}, utr: {}, auditQ: '', bankPick: '', payDate: '', payeeQ: '' }
 };
-const role = () => S.me && S.me.role;
+const realRole = () => S.me && S.me.role;
+const testOn = () => realRole() === 'owner' && S.settings && S.settings.owner_test_mode === 'on';
+const role = () => (testOn() && S.view) ? S.view : (S.me && S.me.role);
 const isOwner = () => role() === 'owner';
 const canRaise = () => role() === 'owner' || role() === 'accounts';
 const bankOf = id => S.banks.find(b => b.id === id);
@@ -200,7 +203,7 @@ function showNoAccess(email) {
     <button class="btn" data-act="logout">Sign out</button></div></div>`;
 }
 async function loadAll() {
-  const r = role();
+  const r = realRole();
   const [banks, settings, pos, reqs, batches] = await Promise.all([
     qry(sb.from('pay_bank_accounts').select('*').order('code')),
     qry(sb.from('pay_settings').select('*')),
@@ -246,6 +249,7 @@ function renderShell() {
       <div class="brand">CCI Payments<small>Approvals &amp; release control</small></div>
       <div class="who"><span>${esc(S.me.name)}</span><span class="role">${esc(role() === 'partner' ? 'JH' : role())}</span>
         ${(role() === 'owner' || role() === 'accounts') ? '<a class="btn s" href="index.html" style="text-decoration:none">&larr; CAMELS</a>' : ''}<button class="btn s" data-act="reload">Refresh</button><button class="btn s" data-act="logout">Sign out</button></div></div>
+    ${testOn() ? `<div class="testbar"><b>TEST MODE</b> — you are acting as: ${[['owner', 'Owner'], ['accounts', 'Accounts'], ['ceo', 'CEO'], ['partner', 'JH']].map(([k, l]) => `<button class="btn s ${role() === k ? 'p' : ''}" data-act="viewas" data-v="${k}">${l}</button>`).join(' ')}<span class="sp"></span><span>Approvals made here are real. Cancel test entries and switch test mode off before live use.</span> <button class="btn s d" data-act="testmode" data-on="0">Switch off</button></div>` : ''}
     <div class="tabs">${tabs.map(([k, l, n]) => `<button class="tab ${S.tab === k ? 'on' : ''}" data-act="tab" data-t="${k}">${esc(l)}${n ? `<span class="n">${n}</span>` : ''}</button>`).join('')}</div></div>
     <main id="main"></main>`;
   renderMain();
@@ -291,6 +295,7 @@ function vDash() {
     const l = devLive.filter(r => r.dev_funding_account_id === b.id), p = devPaid.filter(r => r.dev_funding_account_id === b.id);
     return { b, live: sum(l, r => r.shortfall_at_approval), paid: sum(p, r => r.shortfall_at_approval), n: l.length + p.length };
   }).filter(x => x.n);
+  const unasg = devLive.filter(r => !r.dev_funding_account_id); if (unasg.length) devByBank.push({ b: { label: 'Not yet assigned (chosen on the payment sheet)' }, live: sum(unasg, r => r.shortfall_at_approval), paid: 0, n: unasg.length });
   const posRows = S.pos.map(p => `<tr><td><b>${esc(p.project_name)}</b><div class="mut" style="font-size:12px">${esc(p.client_name || '')}</div></td>
     <td class="r amt">${inr0(p.opening_net)}</td><td class="r amt">${inr0(p.adjustments)}</td><td class="r amt good">${inr0(p.receipts)}</td>
     <td class="r amt">${inr0(p.paid)}</td><td class="r amt">${inr0(p.committed)}</td>
@@ -353,7 +358,7 @@ function vReqs() {
 
 /* ---------- Excel-style quick entry ---------- */
 const GCOLS = ['p', 'y', 'c', 'bill', 'g', 't', 'd', 'pr'];
-const gBlank = () => ({ p: '', y: '', c: 'material', bill: '', g: '', t: '', d: '', pr: 'normal', dr: '', db: '' });
+const gBlank = () => ({ p: '', y: '', c: 'labour', bill: '', g: '', t: '', d: '', pr: 'normal', dr: 'client_inflow_delayed' });
 function gRows() { if (!S.ui.grid) S.ui.grid = Array.from({ length: 8 }, gBlank); return S.ui.grid; }
 function gPayeeMap() {
   const names = {}, labels = {};
@@ -397,14 +402,13 @@ function gBodyHtml() {
     <td>${sel(i, 'pr', [['normal', 'Normal'], ['urgent', 'Urgent']], r.pr)}</td>
     <td id="g-chk-${i}" style="white-space:nowrap"></td>
     <td>${sel(i, 'dr', Object.entries(DEV_REASONS), r.dr, 'Reason…')}</td>
-    <td>${sel(i, 'db', S.banks.filter(b => b.is_active).map(b => [b.id, b.label]), r.db, 'Fund from…')}</td>
     <td><button class="btn s" data-act="griddel" data-r="${i}" title="Remove row">×</button></td></tr>`).join('');
 }
 function vGrid() {
   return `<div class="card" style="margin-bottom:14px"><div class="row" style="margin-bottom:8px"><h3 style="margin:0">Excel-style entry</h3><span class="sp"></span>
     <button class="btn s" data-act="gridadd">+ 5 rows</button><button class="btn s" data-act="gridclear">Clear</button><button class="btn p" data-act="gridsave">Save all as drafts</button></div>
     <p class="mut" style="font-size:12.5px;margin:0 0 8px">Type row by row, or <b>copy rows from Excel and paste into any cell</b> — columns in this order: Project, Payee, Category, Bill ref, Gross, TDS, Due date, Priority. Each row shows an inflow check. Deviation rows need a reason and a fund-from account. Rows are saved as drafts; you then submit them to the CEO.</p>
-    <div class="tw"><table class="gtbl"><thead><tr><th>#</th><th>Project</th><th>Payee</th><th>Category</th><th>Bill ref</th><th class="r">Gross ₹</th><th class="r">TDS ₹</th><th class="r">Net ₹</th><th>Due</th><th>Priority</th><th>Check</th><th>Deviation reason</th><th>Fund from</th><th></th></tr></thead>
+    <div class="tw"><table class="gtbl"><thead><tr><th>#</th><th>Project</th><th>Payee</th><th>Category</th><th>Bill ref</th><th class="r">Gross ₹</th><th class="r">TDS ₹</th><th class="r">Net ₹</th><th>Due</th><th>Priority</th><th>Check</th><th>Deviation reason</th><th></th></tr></thead>
     <tbody id="grid-body">${gBodyHtml()}</tbody></table></div>
     <div class="row" style="margin-top:8px"><span id="g-sum" class="mut"></span></div></div>`;
 }
@@ -414,7 +418,7 @@ function gUpdate() {
     const net = $('#g-net-' + i), chk = $('#g-chk-' + i); if (!net || !chk) return;
     net.textContent = o.empty || !(o.net > 0) ? '—' : inr(o.net);
     chk.innerHTML = o.empty ? '' : o.ok ? (o.dev ? '<span class="badge b-dev">Deviation</span>' : '<span class="badge b-green">In inflow</span>') : `<span class="bad" style="font-size:12px">${esc(o.msg)}</span>`;
-    ['dr', 'db'].forEach(c => { const e = document.querySelector(`[data-r="${i}"][data-c="${c}"]`); if (e) e.disabled = !(o.ok && o.dev); });
+    ['dr'].forEach(c => { const e = document.querySelector(`[data-r="${i}"][data-c="${c}"]`); if (e) e.disabled = !(o.ok && o.dev); });
     if (o.ok) { n++; tot += o.net; }
   });
   const sm = $('#g-sum'); if (sm) sm.textContent = n ? `${n} row${n > 1 ? 's' : ''} ready · total net ${inr(tot)}` : 'No complete rows yet';
@@ -455,7 +459,7 @@ function reqFormHtml(r) {
   return `<div class="ovl" data-act="ovl"><div class="modal">
     <h2>${r.id ? 'Edit request ' + esc(r.req_no) : 'New payment request'}</h2>
     <div class="grid2"><div class="field"><label>Project</label><select id="rf-project" data-live="gate"><option value="">Select…</option>${S.projects.map(p => `<option value="${p.id}" ${r.project_id === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div>
-      <div class="field"><label>Category</label><select id="rf-cat">${Object.entries(CATS).map(([k, v]) => `<option value="${k}" ${r.category === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div></div>
+      <div class="field"><label>Category</label><select id="rf-cat">${Object.entries(CATS).map(([k, v]) => `<option value="${k}" ${(r.category || 'labour') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div></div>
     <div class="field"><label>Payee (pick from list)</label><input id="rf-payee" list="payeeList" autocomplete="off" value="${esc(curLabel)}" placeholder="Start typing a name…"><datalist id="payeeList">${opts}</datalist>
       <div class="mut" style="font-size:12px;margin-top:3px">Not listed? Add the vendor under <b>Payees</b> first (bank account + IFSC are needed for the bank file).</div></div>
     <div class="grid3"><div class="field"><label>Bill / invoice ref</label><input id="rf-bill" value="${esc(r.bill_ref || '')}"></div>
@@ -467,10 +471,9 @@ function reqFormHtml(r) {
       <div class="field"><label>Other deduction (₹)</label><input id="rf-oth" type="number" step="0.01" min="0" value="${esc(r.other_deduction ?? 0)}" data-live="gate"></div></div>
     <div id="rf-gate"></div>
     <div id="rf-dev" style="display:none"><div class="card dev" style="margin-bottom:12px"><h3 style="margin-bottom:8px">Deviation details (above client inflow)</h3>
-      <div class="grid2"><div class="field"><label>Reason</label><select id="rf-dreason"><option value="">Select…</option>${Object.entries(DEV_REASONS).map(([k, v]) => `<option value="${k}" ${r.dev_reason_code === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
-        <div class="field"><label>Fund from (OD / bank account)</label><select id="rf-dbank"><option value="">Select…</option>${S.banks.filter(b => b.is_active).map(b => `<option value="${b.id}" ${r.dev_funding_account_id === b.id ? 'selected' : ''}>${esc(b.label)}</option>`).join('')}</select></div></div>
-      <div class="grid2"><div class="field"><label>Expected client inflow date</label><input id="rf-ddate" type="date" value="${esc(r.dev_expected_inflow_date || '')}"></div>
-        <div class="field"><label>Expected inflow amount (₹)</label><input id="rf-damt" type="number" step="0.01" value="${esc(r.dev_expected_inflow_amount ?? '')}"></div></div>
+      <div class="grid2"><div class="field"><label>Reason</label><select id="rf-dreason">${Object.entries(DEV_REASONS).map(([k, v]) => `<option value="${k}" ${(r.dev_reason_code || 'client_inflow_delayed') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+        <div class="field"><label>Expected client inflow date</label><input id="rf-ddate" type="date" value="${esc(r.dev_expected_inflow_date || '')}"></div></div>
+      <div class="grid2"><div class="field"><label>Expected inflow amount (₹)</label><input id="rf-damt" type="number" step="0.01" value="${esc(r.dev_expected_inflow_amount ?? '')}"></div></div>
       <div class="field"><label>Note for the CEO</label><input id="rf-dnote" value="${esc(r.dev_note || '')}" placeholder="Why now, and when the client money is due"></div></div></div>
     <div class="row" style="justify-content:flex-end"><button class="btn" data-act="closemodal">Cancel</button><button class="btn p" data-act="savereq" data-id="${esc(r.id || '')}">Save draft</button></div>
   </div></div>`;
@@ -495,7 +498,7 @@ function ceoCard(x) {
   const r = x.r, dev = x.shortfall > 0, pn = S.ui.panel[r.id] || {};
   const bank = bankOf(r.dev_funding_account_id);
   const panel = pn.mode ? `<div style="margin-top:10px;padding:10px;background:var(--paper-2);border-radius:8px">
-      ${pn.mode === 'approve' && dev ? `<label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px"><input type="checkbox" data-act="devok" data-id="${r.id}" ${pn.devok ? 'checked' : ''}><span><b>I approve this deviation</b> — ${inr(x.shortfall)} above client inflow, to be funded from ${esc(bank ? bank.label : 'the stated account')}.</span></label>` : ''}
+      ${pn.mode === 'approve' && dev ? `<label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px"><input type="checkbox" data-act="devok" data-id="${r.id}" ${pn.devok ? 'checked' : ''}><span><b>I approve this deviation</b> — ${inr(x.shortfall)} above client inflow, to be funded from OD (bank chosen when the payment sheet is made).</span></label>` : ''}
       ${pn.mode === 'approve' ? `<div class="field"><label>Approve amount (₹) — reduce for part payment</label><input type="number" step="0.01" data-live="pamt" data-id="${r.id}" value="${esc(pn.amount ?? r.net_amount)}"></div>` : ''}
       <div class="field"><label>Remark ${pn.mode === 'approve' && !dev ? '(optional)' : '(required)'}</label><input data-live="prem" data-id="${r.id}" value="${esc(pn.remark || '')}" placeholder="${pn.mode === 'return' ? 'What should the owner fix?' : pn.mode === 'reject' ? 'Reason for rejecting' : 'e.g. OK, OD funds, client RA due 12 Nov'}"></div>
       <div class="row"><button class="btn ${pn.mode === 'approve' ? 'g' : pn.mode === 'reject' ? 'd' : 'a'}" data-act="ceoconfirm" data-id="${r.id}">Confirm ${pn.mode}</button><button class="btn" data-act="ceopanel" data-id="${r.id}" data-m="">Back</button></div></div>` : '';
@@ -529,7 +532,7 @@ function vAppr() {
           <td>${r.due_date ? fdate(r.due_date) : ''}</td>
           <td class="r amt">${inr(r.gross_amount)}</td><td class="r amt">${num(r.tds_amount) ? inr(r.tds_amount) : '—'}</td><td class="r amt"><b>${inr(r.net_amount)}</b></td>
           ${isCeo ? `<td class="r"><input class="ci" type="number" step="0.01" min="0" data-live="camt" data-id="${r.id}" value="${esc(S.ui.camt[r.id] !== undefined ? S.ui.camt[r.id] : r.net_amount)}" title="Approve a lower amount for a part payment"></td>` : ''}
-          <td title="${dev ? esc((DEV_REASONS[r.dev_reason_code] || '') + (r.dev_expected_inflow_date ? ' · expected inflow ' + fdate(r.dev_expected_inflow_date) : '') + (r.dev_note ? ' · ' + r.dev_note : '')) : ''}">${dev ? `<span class="badge b-dev">Deviation ${inr0(x.shortfall)}</span> <span class="mut" style="font-size:11.5px">${esc(bank ? bank.label.replace(/ Bank.*| \(.*/, '') : '—')}</span>${r.dev_note ? `<div class="mut" style="font-size:11px;max-width:230px;white-space:normal">${esc(DEV_REASONS[r.dev_reason_code] || '')}${r.dev_expected_inflow_date ? ' · inflow ' + fdate(r.dev_expected_inflow_date) : ''}</div>` : ''}` : '<span class="badge b-green">In inflow</span>'}</td>
+          <td title="${dev ? esc((DEV_REASONS[r.dev_reason_code] || '') + (r.dev_expected_inflow_date ? ' · expected inflow ' + fdate(r.dev_expected_inflow_date) : '') + (r.dev_note ? ' · ' + r.dev_note : '')) : ''}">${dev ? `<span class="badge b-dev">Deviation ${inr0(x.shortfall)}</span> ${bank ? `<span class="mut" style="font-size:11.5px">${esc(bank.label.replace(/ Bank.*| \(.*/, ''))}</span>` : ''}${r.dev_note ? `<div class="mut" style="font-size:11px;max-width:230px;white-space:normal">${esc(DEV_REASONS[r.dev_reason_code] || '')}${r.dev_expected_inflow_date ? ' · inflow ' + fdate(r.dev_expected_inflow_date) : ''}</div>` : ''}` : '<span class="badge b-green">In inflow</span>'}</td>
           ${isCeo ? `<td><button class="btn g s" data-act="crow" data-m="approve" data-id="${r.id}" title="Approve">✓</button> <button class="btn a s" data-act="crow" data-m="return" data-id="${r.id}" title="Return to owner">↩</button> <button class="btn d s" data-act="crow" data-m="reject" data-id="${r.id}" title="Reject">✕</button></td>` : ''}</tr>`;
       }).join('');
   }).join('');
@@ -562,7 +565,7 @@ function vBatches() {
       <td class="r amt">${inr(orig)}${num(r.net_amount) !== orig && !r.parent_id ? `<div class="mut" style="font-size:11px">requested ${inr(r.net_amount)}</div>` : ''}</td>
       <td class="r amt"><b>${inr(r.approved_amount)}</b>${orig !== num(r.approved_amount) ? `<div class="mut" style="font-size:11px">balance after part payment</div>` : ''}</td>
       <td class="r"><input class="ci" type="number" step="0.01" min="0" data-live="bpay" data-id="${r.id}" value="${esc(S.ui.bpay[r.id] !== undefined ? S.ui.bpay[r.id] : r.approved_amount)}" style="width:116px;text-align:right" title="Amount to pay today — less than the approved balance for a part payment"></td>
-      <td>${r.is_deviation ? `<span class="badge b-dev">Deviation</span><div class="mut" style="font-size:11px">fund from ${esc(bank ? bank.label : '—')}</div>` : ''}</td><td>${fdt(r.ceo_at)}</td>
+      <td>${r.is_deviation ? `<span class="badge b-dev">Deviation</span>${bank ? `<div class="mut" style="font-size:11px">fund from ${esc(bank.label)}</div>` : '<div class="mut" style="font-size:11px">pay from the OD account</div>'}` : ''}</td><td>${fdt(r.ceo_at)}</td>
       <td><button class="btn s" data-act="relbal" data-id="${r.id}" title="Cancel the unused approval so it stops counting against inflow">Release</button></td></tr>`;
   }).join('');
   const batches = S.batches.filter(b => b.status !== 'cancelled').slice(0, 60);
@@ -620,7 +623,7 @@ function vVerify() {
           <div class="mut">${esc(CATS[r.category])}${r.bill_ref ? ' · Bill ' + esc(r.bill_ref) : ''}</div>${r.description ? `<div>${esc(r.description)}</div>` : ''}</div>
           <span class="sp"></span><div style="text-align:right"><div class="big amt">${inr(r.approved_amount)}</div>${num(r.approved_amount) !== num(r.net_amount) ? `<div class="bad" style="font-size:12px">CEO reduced from ${inr(r.net_amount)}</div>` : ''}</div></div>
         <div style="margin:8px 0;font-size:12.5px"><span class="badge b-approved">CEO approved ${fdt(r.ceo_at)}</span>${r.parent_id ? ` <span class="badge b-open">Part payment — CEO approved ${inr(r.orig_approved)}</span>` : ''}${r.ceo_remark ? ` <span class="mut">“${esc(r.ceo_remark)}”</span>` : ''}
-          ${r.is_deviation ? `<div class="gate dev" style="margin:8px 0 0"><b>Deviation</b> — ${inr(r.shortfall_at_approval)} above client inflow, approved by CEO. Funded from ${esc((bankOf(r.dev_funding_account_id) || {}).label || '—')}. ${esc(DEV_REASONS[r.dev_reason_code] || '')}${r.dev_expected_inflow_date ? ' · expected inflow ' + fdate(r.dev_expected_inflow_date) : ''}${r.dev_note ? ' · ' + esc(r.dev_note) : ''}</div>` : '<span class="badge b-green">Within client inflow</span>'}
+          ${r.is_deviation ? `<div class="gate dev" style="margin:8px 0 0"><b>Deviation</b> — ${inr(r.shortfall_at_approval)} above client inflow, approved by CEO. ${bankOf(r.dev_funding_account_id) ? 'Funded from ' + esc(bankOf(r.dev_funding_account_id).label) + '. ' : ''}${esc(DEV_REASONS[r.dev_reason_code] || '')}${r.dev_expected_inflow_date ? ' · expected inflow ' + fdate(r.dev_expected_inflow_date) : ''}${r.dev_note ? ' · ' + esc(r.dev_note) : ''}</div>` : '<span class="badge b-green">Within client inflow</span>'}
           ${bankChg ? `<div class="gate" style="background:#FFF1DB;border:1px solid #F0C98A;margin:8px 0 0"><b>⚠ Payee bank details were changed on ${fdate(r.payee_bank_changed_at)}.</b> Confirm with the vendor before verifying.</div>` : ''}</div>
         <div class="row"><label class="btn ${d.decision === 'verify' ? 'g' : ''}"><input type="radio" style="display:none" name="d-${r.id}" data-act="pdec" data-id="${r.id}" data-d="verify" ${d.decision === 'verify' ? 'checked' : ''}> ✓ Verify</label>
           <label class="btn ${d.decision === 'return' ? 'd' : ''}"><input type="radio" style="display:none" name="d-${r.id}" data-act="pdec" data-id="${r.id}" data-d="return" ${d.decision === 'return' ? 'checked' : ''}> ↩ Return</label>
@@ -732,6 +735,9 @@ function vAdmin() {
       <div class="field"><label>Role</label><select id="gr-role"><option value="ceo">CEO — approves every payment</option><option value="partner">JH — verifies batches</option><option value="accounts">Accounts — raises requests, batches, exports</option></select></div></div>
     <button class="btn p" data-act="grant">Grant access</button>
     <p class="mut" style="font-size:12px;margin:10px 0 0">CEO and JH users see only payment amounts, payees' names, approvals and the audit trail — not CAMELS bills, subcontractor bank details or bank statements.</p></div>
+  <div class="card ${testOn() ? 'dev' : ''}"><h3 style="margin-bottom:6px">Test mode</h3>
+    <p class="mut" style="margin:0 0 8px;font-size:12.5px">Lets the owner login try every role — Accounts, CEO and JH — to test the whole flow yourself. While on, the owner can approve their own requests, so use it with test data only and switch it off before real use. Switching on and off is recorded in the Audit.</p>
+    ${testOn() ? '<button class="btn d" data-act="testmode" data-on="0">Switch test mode OFF</button>' : '<button class="btn a" data-act="testmode" data-on="1">Switch test mode ON</button>'}</div>
   <div class="card"><h3 style="margin-bottom:8px">Bank accounts</h3><div class="tw"><table><thead><tr><th>Code</th><th>Label</th><th>Type</th><th>OD limit (₹)</th><th>Tally ledger name</th><th>Active</th><th></th></tr></thead><tbody>
     ${S.banks.map(b => `<tr><td class="mono">${esc(b.code)}</td><td><input id="bk-l-${b.id}" value="${esc(b.label)}"></td><td><select id="bk-k-${b.id}"><option value="current" ${b.account_kind === 'current' ? 'selected' : ''}>Current</option><option value="od" ${b.account_kind === 'od' ? 'selected' : ''}>OD / CC</option></select></td>
       <td><input id="bk-o-${b.id}" type="number" value="${esc(b.od_limit ?? '')}"></td><td><input id="bk-t-${b.id}" value="${esc(b.tally_ledger || '')}"></td><td><select id="bk-a-${b.id}"><option value="1">Yes</option><option value="0" ${b.is_active ? '' : 'selected'}>No</option></select></td>
@@ -753,9 +759,9 @@ function reqsXlsx(list) {
   const today = todayISO(), tot = sum(L, r => r.net_amount), dev = sum(gate, g => g.short);
   const rows = [['CCI — Payment approval request'], ['Date', fdate(today), 'Prepared by', (S.me && S.me.name) || '', 'Requests', L.length], [],
     ['Total requested (net)', tot, '', 'Within client inflow', tot - dev, '', 'Deviation (above client inflow)', dev], [],
-    ['#', 'Ref', 'Project', 'Payee', 'Category', 'Bill ref', 'Description', 'Due date', 'Priority', 'Gross', 'TDS', 'Other deduction', 'Net requested', 'Client headroom before this line', 'Inflow check', 'Above inflow', 'Deviation reason', 'Fund from', 'Expected inflow date', 'Note', 'CEO decision (Approve / Reduce to ₹ / Reject)']];
+    ['#', 'Ref', 'Project', 'Payee', 'Category', 'Bill ref', 'Description', 'Due date', 'Priority', 'Gross', 'TDS', 'Other deduction', 'Net requested', 'Client headroom before this line', 'Inflow check', 'Above inflow', 'Deviation reason', 'Expected inflow date', 'Note', 'CEO decision (Approve / Reduce to ₹ / Reject)']];
   L.forEach((r, i) => { const g = gate[i], bk = bankOf(r.dev_funding_account_id);
-    rows.push([i + 1, r.req_no, r.project_name, r.payee_name, CATS[r.category] || r.category, r.bill_ref || '', r.description || '', r.due_date ? fdate(r.due_date) : '', r.priority === 'urgent' ? 'Urgent' : 'Normal', num(r.gross_amount), num(r.tds_amount), num(r.other_deduction), num(r.net_amount), g.head, g.short > 0 ? 'DEVIATION' : 'Within inflow', g.short > 0 ? g.short : '', g.short > 0 ? (DEV_REASONS[r.dev_reason_code] || '') : '', g.short > 0 && bk ? bk.label : '', r.dev_expected_inflow_date ? fdate(r.dev_expected_inflow_date) : '', r.dev_note || '', '']); });
+    rows.push([i + 1, r.req_no, r.project_name, r.payee_name, CATS[r.category] || r.category, r.bill_ref || '', r.description || '', r.due_date ? fdate(r.due_date) : '', r.priority === 'urgent' ? 'Urgent' : 'Normal', num(r.gross_amount), num(r.tds_amount), num(r.other_deduction), num(r.net_amount), g.head, g.short > 0 ? 'DEVIATION' : 'Within inflow', g.short > 0 ? g.short : '', g.short > 0 ? (DEV_REASONS[r.dev_reason_code] || '') : '', r.dev_expected_inflow_date ? fdate(r.dev_expected_inflow_date) : '', r.dev_note || '', '']); });
   rows.push([]); rows.push(['', '', '', 'TOTAL', '', '', '', '', '', sum(L, r => r.gross_amount), sum(L, r => r.tds_amount), sum(L, r => r.other_deduction), tot, '', '', dev]);
   rows.push([], ['Project-wise summary'], ['Project', 'Requests', 'Net requested', 'Client headroom now', 'Above inflow (deviation)']);
   [...new Set(L.map(r => r.project_id))].forEach(pid => { const ls = L.filter(r => r.project_id === pid); rows.push([ls[0].project_name, ls.length, sum(ls, r => r.net_amount), num((posOf(pid) || {}).headroom), sum(L.map((r, i) => r.project_id === pid ? gate[i] : { short: 0 }), g => g.short)]); });
@@ -856,7 +862,7 @@ const ACT = {
     if (gross <= 0 || gross - tds - oth <= 0) return toast('Enter a gross amount; net must be above zero', true);
     const row = { project_id: pid, payee_id: p.id, payee_name: p.name, category: $('#rf-cat').value, bill_ref: $('#rf-bill').value.trim() || null, due_date: $('#rf-due').value || null,
       priority: $('#rf-prio').value, description: $('#rf-desc').value.trim() || null, gross_amount: gross, tds_amount: tds, other_deduction: oth,
-      dev_reason_code: $('#rf-dreason').value || null, dev_funding_account_id: $('#rf-dbank').value || null, dev_expected_inflow_date: $('#rf-ddate').value || null,
+      dev_reason_code: $('#rf-dreason').value || null, dev_expected_inflow_date: $('#rf-ddate').value || null,
       dev_expected_inflow_amount: $('#rf-damt').value ? num($('#rf-damt').value) : null, dev_note: $('#rf-dnote').value.trim() || null };
     await guard(async () => {
       if (id) await qry(sb.from('pay_requests').update(row).eq('id', id)); else await qry(sb.from('pay_requests').insert(row));
@@ -890,6 +896,12 @@ const ACT = {
         <h3 style="margin-bottom:8px">History</h3><div class="tl">${au.map(a => `<div class="it"><b>${esc(a.action)}</b> <span class="mut">— ${esc(a.actor_name || 'system')}, ${fdt(a.at)}</span>${a.detail && (a.detail.ceo_remark || a.detail.partner_remark) ? `<div class="mut" style="font-size:12.5px">${esc(a.detail.ceo_remark || a.detail.partner_remark)}</div>` : ''}</div>`).join('') || '<div class="mut">No history.</div>'}</div></div></div>`);
     });
   },
+  viewas(el) { S.view = el.dataset.v; S.tab = defaultTab(); renderShell(); },
+  async testmode(el) {
+    const on = el.dataset.on === '1';
+    if (on && !confirm('Switch ON test mode?\n\nThe owner login can then act as CEO, JH and Accounts — including approving your own requests. Use it only for testing, cancel the test entries, and switch it off before real use.')) return;
+    await guard(async () => { await rpc('pay_set_test_mode', { p_on: on }); if (!on) S.view = null; toast(on ? 'Test mode ON' : 'Test mode OFF'); S.tab = on ? S.tab : 'dash'; await loadAll(); renderShell(); });
+  },
   /* CEO */
   ceopanel(el) { const m = el.dataset.m; if (!m) delete S.ui.panel[el.dataset.id]; else S.ui.panel[el.dataset.id] = { mode: m, remark: '', amount: undefined, devok: false }; renderMain(); },
   devok(el) { (S.ui.panel[el.dataset.id] || {}).devok = el.checked; },
@@ -912,7 +924,7 @@ const ACT = {
     if (badAmt) return toast(`${badAmt.r.req_no}: approve amount must be above 0 and not more than ${inr(badAmt.r.net_amount)}`, true);
     const dev = T.filter(x => x.shortfall > 0);
     let msg = `Approve ${T.length} payment(s) totalling ${inr(sum(T, amtOf))}?`;
-    if (dev.length) msg += `\n\n${dev.length} of them are DEVIATIONS (${inr(sum(dev, x => x.shortfall))} above client inflow, to be funded from the OD account stated on each line). Approving confirms those deviations.`;
+    if (dev.length) msg += `\n\n${dev.length} of them are DEVIATIONS (${inr(sum(dev, x => x.shortfall))} above client inflow, to be funded from OD). Approving confirms those deviations.`;
     if (!confirm(msg)) return;
     let remark = null;
     if (dev.length) { remark = prompt('Remark for the deviation approvals (required):'); if (!remark || !remark.trim()) return toast('A remark is required to approve a deviation', true); remark = remark.trim(); }
@@ -931,7 +943,7 @@ const ACT = {
       if (!(a > 0) || a > num(x.r.net_amount)) return toast(`Approve amount must be above 0 and not more than ${inr(x.r.net_amount)}`, true);
       if (a !== num(x.r.net_amount)) amount = a;
       if (x.shortfall > 0) {
-        if (!confirm(`DEVIATION: ${inr(x.shortfall)} above client inflow. Approve ${inr(a)} to ${x.r.payee_name}, funded from ${(bankOf(x.r.dev_funding_account_id) || {}).label || 'the stated account'}?`)) return;
+        if (!confirm(`DEVIATION: ${inr(x.shortfall)} above client inflow. Approve ${inr(a)} to ${x.r.payee_name}, funded from OD?`)) return;
         remark = prompt('Remark for this deviation approval (required):'); if (!remark || !remark.trim()) return toast('A remark is required to approve a deviation', true);
         remark = remark.trim(); devok = true;
       }
@@ -1029,10 +1041,10 @@ const ACT = {
     g.forEach((r, i) => {
       const o = calc[i]; if (o.empty) return;
       if (!o.ok) { problems.push(`Row ${i + 1}: ${o.msg}`); return; }
-      if (o.dev && (!r.dr || !r.db)) { problems.push(`Row ${i + 1}: deviation needs a reason and a fund-from account`); return; }
+      if (o.dev && !r.dr) { problems.push(`Row ${i + 1}: deviation needs a reason`); return; }
       const py = payeeOf(o.payee);
       payload.push({ project_id: r.p, payee_id: py.id, payee_name: py.name, category: r.c, bill_ref: r.bill.trim() || null, due_date: r.d || null, priority: r.pr,
-        gross_amount: num(r.g), tds_amount: num(r.t), other_deduction: 0, dev_reason_code: o.dev ? r.dr : null, dev_funding_account_id: o.dev ? r.db : null });
+        gross_amount: num(r.g), tds_amount: num(r.t), other_deduction: 0, dev_reason_code: o.dev ? r.dr : null });
       idx.push(i);
     });
     if (problems.length) { alert('Please fix these rows first (nothing was saved):\n\n' + problems.join('\n')); return; }
