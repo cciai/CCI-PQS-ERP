@@ -539,7 +539,7 @@ function vAppr() {
   return `<div class="row" style="margin-bottom:10px"><h2>${isCeo ? 'Awaiting your approval' : 'CEO approval queue'}</h2><span class="sp"></span>
     ${isOwner() && Q.length ? `<button class="btn a" data-act="wa-ceo">Remind CEO on WhatsApp</button>` : ''}
     ${isCeo && Q.length ? `<button class="btn g" data-act="cbatch" data-m="sel" ${selQ.length ? '' : 'disabled'}>Approve selected (${selQ.length} · ${inr0(sum(selQ, amtOf))})</button><button class="btn p" data-act="cbatch" data-m="all">Approve all (${Q.length} · ${inr0(sum(Q, amtOf))})</button>` : ''}</div>
-    ${Q.length ? `<div class="note ${devN.length ? 'red' : 'blue'}">${Q.length} payment${Q.length > 1 ? 's' : ''} · ${inr0(sum(Q, x => x.r.net_amount))}${devN.length ? ` · <b>${devN.length} deviation${devN.length > 1 ? 's' : ''}</b> (${inr0(sum(devN, x => x.shortfall))} above client inflow, shaded red)` : ' · all within client inflow'}. Ordered urgent-first, then by due date; headroom is consumed in that order.${isCeo ? ' Tick rows and press <b>Approve selected</b>, or edit the <b>Approve ₹</b> box for a part payment. Approving a deviation confirms it and asks for a remark.' : ''}</div>` : ''}
+    ${Q.length ? `<div class="note ${devN.length ? 'red' : 'blue'}">${Q.length} payment${Q.length > 1 ? 's' : ''} · ${inr0(sum(Q, x => x.r.net_amount))}${devN.length ? ` · <b>${devN.length} deviation${devN.length > 1 ? 's' : ''}</b> (${inr0(sum(devN, x => x.shortfall))} above client inflow, shaded red)` : ' · all within client inflow'}. Ordered urgent-first, then by due date; headroom is consumed in that order.${isCeo ? ' Tick rows and press <b>Approve selected</b>, or edit the <b>Approve ₹</b> box for a part payment. Approving a red deviation line also approves the deviation (funded from OD) — no extra pop-up.' : ''}</div>` : ''}
     ${Q.length ? `<div class="card" style="padding:6px"><div class="tw"><table class="ctbl"><thead><tr>${isCeo ? `<th><input type="checkbox" data-act="cselall" ${Q.length && selQ.length === Q.length ? 'checked' : ''}></th>` : ''}<th>Ref</th><th>Payee</th><th>Due</th><th class="r">Gross</th><th class="r">TDS</th><th class="r">Net</th>${isCeo ? '<th class="r">Approve ₹</th>' : ''}<th>Inflow check</th>${isCeo ? '<th></th>' : ''}</tr></thead><tbody>${body}</tbody>
       <tfoot><tr><td colspan="${isCeo ? 6 : 4}" class="r"><b>Total</b></td><td class="r amt"><b>${inr(sum(Q, x => x.r.net_amount))}</b></td>${isCeo ? `<td class="r amt"><b>${inr(sum(Q, amtOf))}</b></td>` : ''}<td></td>${isCeo ? '<td></td>' : ''}</tr></tfoot></table></div></div>` : '<div class="card empty">Nothing is waiting for approval.</div>'}
     <h3 style="margin:22px 0 8px">Recent decisions</h3><div class="card"><div class="tw"><table class="ctbl"><thead><tr><th>Ref</th><th>Project</th><th>Payee</th><th class="r">Net</th><th class="r">Approved</th><th>Decision</th><th>When</th><th>Remark</th></tr></thead><tbody>
@@ -548,6 +548,21 @@ function vAppr() {
 
 /* ---------- batches (accounts / owner) ---------- */
 function bpayOf(r) { const v = S.ui.bpay[r.id]; return v === undefined || v === '' ? num(r.approved_amount) : num(v); }
+function ageTag(r) {
+  if (!r.ceo_at) return '';
+  const d = Math.floor(daysSince(r.ceo_at)), am = num(S.settings.approval_age_amber || 7), rd = num(S.settings.approval_age_red || 30);
+  const c = d >= rd ? 'b-rejected' : d >= am ? 'b-warn' : 'b-open';
+  return `<div><span class="badge ${c}">${d === 0 ? 'today' : d + ' day' + (d === 1 ? '' : 's') + ' old'}</span></div>`;
+}
+function approvedSummary(appr) {
+  const by = {}; appr.forEach(r => { (by[r.project_id] = by[r.project_id] || []).push(r); });
+  const ids = Object.keys(by); if (!ids.length) return '';
+  return `<div class="card"><h3 style="margin-bottom:6px">Approved, not yet paid — held against client inflow</h3><div class="tw"><table class="ctbl"><thead><tr><th>Project</th><th class="r">Lines</th><th class="r">Approved unpaid</th><th class="r">Oldest approval</th><th>Next planned date</th><th class="r">Headroom now</th></tr></thead><tbody>
+    ${ids.map(pid => { const L = by[pid], p = posOf(pid) || {}, old = Math.floor(Math.max(...L.map(r => r.ceo_at ? daysSince(r.ceo_at) : 0))), pl = L.map(r => r.planned_pay_date).filter(Boolean).sort()[0];
+      return `<tr><td><b>${esc(L[0].project_name)}</b></td><td class="r">${L.length}</td><td class="r amt"><b>${inr(sum(L, r => r.approved_amount))}</b></td><td class="r">${old} day${old === 1 ? '' : 's'}</td><td>${pl ? fdate(pl) : '<span class="mut">not planned</span>'}</td><td class="r amt ${headClass(p.headroom)}">${inr(p.headroom)}</td></tr>`; }).join('')}
+    <tr><td><b>Total</b></td><td class="r">${appr.length}</td><td class="r amt"><b>${inr(sum(appr, r => r.approved_amount))}</b></td><td colspan="3"></td></tr></tbody></table></div>
+    <p class="mut" style="font-size:12px;margin:8px 0 0">Approved amounts stay reserved until paid or released. Use <b>Release</b> on a line you no longer plan to pay.</p></div>`;
+}
 function bsumHtml() {
   const appr = S.reqs.filter(r => r.status === 'approved'), sel = appr.filter(r => S.ui.bsel.has(r.id));
   return `Total approved, awaiting payment <b>${inr(sum(appr, r => r.approved_amount))}</b> · planned in this sheet <b>${inr(sum(sel, bpayOf))}</b> (${sel.length}) · balance stays approved <b>${inr(sum(sel, r => num(r.approved_amount) - bpayOf(r)))}</b>`;
@@ -565,14 +580,16 @@ function vBatches() {
       <td class="r amt">${inr(orig)}${num(r.net_amount) !== orig && !r.parent_id ? `<div class="mut" style="font-size:11px">requested ${inr(r.net_amount)}</div>` : ''}</td>
       <td class="r amt"><b>${inr(r.approved_amount)}</b>${orig !== num(r.approved_amount) ? `<div class="mut" style="font-size:11px">balance after part payment</div>` : ''}</td>
       <td class="r"><input class="ci" type="number" step="0.01" min="0" data-live="bpay" data-id="${r.id}" value="${esc(S.ui.bpay[r.id] !== undefined ? S.ui.bpay[r.id] : r.approved_amount)}" style="width:116px;text-align:right" title="Amount to pay today — less than the approved balance for a part payment"></td>
-      <td>${r.is_deviation ? `<span class="badge b-dev">Deviation</span>${bank ? `<div class="mut" style="font-size:11px">fund from ${esc(bank.label)}</div>` : '<div class="mut" style="font-size:11px">pay from the OD account</div>'}` : ''}</td><td>${fdt(r.ceo_at)}</td>
+      <td><input type="date" data-act="setplan" data-id="${r.id}" value="${esc(r.planned_pay_date || '')}" style="width:auto;padding:3px 6px"></td>
+      <td>${r.is_deviation ? `<span class="badge b-dev">Deviation</span>${bank ? `<div class="mut" style="font-size:11px">fund from ${esc(bank.label)}</div>` : '<div class="mut" style="font-size:11px">pay from the OD account</div>'}` : ''}</td><td>${fdt(r.ceo_at)}${ageTag(r)}</td>
       <td><button class="btn s" data-act="relbal" data-id="${r.id}" title="Cancel the unused approval so it stops counting against inflow">Release</button></td></tr>`;
   }).join('');
   const batches = S.batches.filter(b => b.status !== 'cancelled').slice(0, 60);
   return `<div class="row" style="margin-bottom:10px"><h2>Daily payment sheets</h2></div>
+  ${approvedSummary(appr)}
   <div class="card"><h3 style="margin-bottom:8px">Approved by CEO — plan today's payments</h3>
     <p class="mut" style="margin:0 0 8px;font-size:12.5px">Tick the lines to pay today. <b>Pay now ₹</b> can be lower than the approved balance — the rest stays approved for a later sheet (split payments), or press <b>Release</b> to drop an unused balance.</p>
-    <div class="tw"><table><thead><tr><th><input type="checkbox" data-act="selallbatch"></th><th>Ref</th><th>Project</th><th>Payee</th><th class="r">CEO approved</th><th class="r">Balance</th><th class="r">Pay now ₹</th><th>Flags</th><th>CEO approved</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="10" class="empty">No approved payments waiting.</td></tr>'}</tbody></table></div>
+    <div class="tw"><table><thead><tr><th><input type="checkbox" data-act="selallbatch"></th><th>Ref</th><th>Project</th><th>Payee</th><th class="r">CEO approved</th><th class="r">Balance</th><th class="r">Pay now ₹</th><th>Planned date</th><th>Flags</th><th>CEO approved</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="11" class="empty">No approved payments waiting.</td></tr>'}</tbody></table></div>
     ${appr.length ? `<div class="row" style="margin-top:12px"><select id="bk-bank" style="width:auto" data-live="bankpick">${S.banks.filter(b => b.is_active).map(b => `<option value="${b.id}" ${pick === b.id ? 'selected' : ''}>Pay from ${esc(b.label)}</option>`).join('')}</select>
       <input id="bk-date" type="date" style="width:auto" value="${esc(S.ui.payDate || todayISO())}" data-live="paydate"><span class="sp"></span><span class="mut" id="bk-sum">${bsumHtml()}</span>
       <button class="btn p" data-act="mkbatch" ${S.ui.bsel.size ? '' : 'disabled'}>Create payment sheet</button></div>` : ''}</div>
@@ -743,7 +760,7 @@ function vAdmin() {
       <td><input id="bk-o-${b.id}" type="number" value="${esc(b.od_limit ?? '')}"></td><td><input id="bk-t-${b.id}" value="${esc(b.tally_ledger || '')}"></td><td><select id="bk-a-${b.id}"><option value="1">Yes</option><option value="0" ${b.is_active ? '' : 'selected'}>No</option></select></td>
       <td><button class="btn s" data-act="savebank" data-id="${b.id}">Save</button></td></tr>`).join('')}</tbody></table></div></div>
   <div class="card"><h3 style="margin-bottom:8px">Settings</h3><div class="grid2">
-    ${[['tally_company', 'Tally company name (exact)'], ['tds_ledger', 'Tally TDS ledger name'], ['tds_in_payment', 'Book TDS inside the payment voucher? (yes / no)'], ['rtgs_threshold', 'RTGS from amount (₹) — below this NEFT'], ['voucher_prefix', 'Voucher number prefix']].map(([k, l]) => `<div class="field"><label>${l}</label><div class="row" style="flex-wrap:nowrap"><input id="st-${k}" value="${esc(S.settings[k] || '')}"><button class="btn s" data-act="savesetting" data-k="${k}">Save</button></div></div>`).join('')}</div></div>`;
+    ${[['tally_company', 'Tally company name (exact)'], ['tds_ledger', 'Tally TDS ledger name'], ['tds_in_payment', 'Book TDS inside the payment voucher? (yes / no)'], ['rtgs_threshold', 'RTGS from amount (₹) — below this NEFT'], ['approval_age_amber', 'Approved-unpaid age turns amber after (days)'], ['approval_age_red', 'Approved-unpaid age turns red after (days)'], ['voucher_prefix', 'Voucher number prefix']].map(([k, l]) => `<div class="field"><label>${l}</label><div class="row" style="flex-wrap:nowrap"><input id="st-${k}" value="${esc(S.settings[k] || '')}"><button class="btn s" data-act="savesetting" data-k="${k}">Save</button></div></div>`).join('')}</div></div>`;
 }
 
 /* =====================================================================
@@ -925,9 +942,8 @@ const ACT = {
     const dev = T.filter(x => x.shortfall > 0);
     let msg = `Approve ${T.length} payment(s) totalling ${inr(sum(T, amtOf))}?`;
     if (dev.length) msg += `\n\n${dev.length} of them are DEVIATIONS (${inr(sum(dev, x => x.shortfall))} above client inflow, to be funded from OD). Approving confirms those deviations.`;
-    if (!confirm(msg)) return;
-    let remark = null;
-    if (dev.length) { remark = prompt('Remark for the deviation approvals (required):'); if (!remark || !remark.trim()) return toast('A remark is required to approve a deviation', true); remark = remark.trim(); }
+    if (!(T.length > 1 ? confirm(msg) : true)) return;
+    const remark = dev.length ? 'Deviation approved - funded from OD' : null;
     await guard(async () => {
       const res = await rpc('pay_ceo_decide_bulk', { p_items: T.map(x => ({ id: x.r.id, decision: 'approve', amount: amtOf(x) !== num(x.r.net_amount) ? amtOf(x) : null, remark: x.shortfall > 0 ? remark : null, dev_ok: x.shortfall > 0 })) });
       if (res.errors && res.errors.length) alert('Some lines need individual attention:\n\n' + res.errors.map(e => e.error).join('\n'));
@@ -942,11 +958,7 @@ const ACT = {
       const v = S.ui.camt[id]; const a = v === undefined || v === '' ? num(x.r.net_amount) : num(v);
       if (!(a > 0) || a > num(x.r.net_amount)) return toast(`Approve amount must be above 0 and not more than ${inr(x.r.net_amount)}`, true);
       if (a !== num(x.r.net_amount)) amount = a;
-      if (x.shortfall > 0) {
-        if (!confirm(`DEVIATION: ${inr(x.shortfall)} above client inflow. Approve ${inr(a)} to ${x.r.payee_name}, funded from OD?`)) return;
-        remark = prompt('Remark for this deviation approval (required):'); if (!remark || !remark.trim()) return toast('A remark is required to approve a deviation', true);
-        remark = remark.trim(); devok = true;
-      }
+      if (x.shortfall > 0) { remark = 'Deviation approved - funded from OD'; devok = true; }
     } else {
       remark = prompt(m === 'return' ? 'What should the owner fix?' : 'Reason for rejecting:'); if (!remark || !remark.trim()) return toast('A remark is required', true); remark = remark.trim();
     }
@@ -970,6 +982,7 @@ const ACT = {
     for (const r of sel) { const a = bpayOf(r); if (!(a > 0) || a > num(r.approved_amount)) return toast(`${r.req_no}: pay-now must be above 0 and not more than ${inr(r.approved_amount)}`, true); if (a !== num(r.approved_amount)) amts[r.id] = a; }
     await guard(async () => { const id = await rpc('pay_create_batch', { p_bank: bank, p_date: date, p_ids: sel.map(r => r.id), p_amounts: Object.keys(amts).length ? amts : null }); sel.forEach(r => delete S.ui.bpay[r.id]); S.ui.bsel.clear(); S.ui.openBatch = id; toast('Payment sheet created'); await refresh(); });
   },
+  async setplan(el) { await guard(async () => { await rpc('pay_set_planned', { p_request: el.dataset.id, p_date: el.value || null }); const r = S.reqs.find(x => x.id === el.dataset.id); if (r) r.planned_pay_date = el.value || null; toast('Planned date saved'); renderMain(); }); },
   async relbal(el) { const r = S.reqs.find(x => x.id === el.dataset.id); const why = prompt(`Release the unused approval of ${inr(r.approved_amount)} for ${r.payee_name}? It will stop counting against client inflow.\n\nReason:`); if (!why || why.trim().length < 3) return; await guard(async () => { await rpc('pay_release_balance', { p_request: r.id, p_reason: why.trim() }); toast('Approval balance released'); await refresh(); }); },
   async xreqs() {
     const f = S.ui; let L = S.reqs.filter(r => r.status === 'draft' && (!f.project || r.project_id === f.project));
@@ -1113,7 +1126,7 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('change', e => {
   const el = e.target.closest('[data-act]'); if (!el) return; const a = el.dataset.act;
-  if (['selreq', 'csel', 'cselall', 'selalldraft', 'selbatch', 'selallbatch', 'selrm', 'devok', 'pdec', 'fproject', 'stmt'].includes(a) && ACT[a]) ACT[a](el, e);
+  if (['selreq', 'setplan', 'csel', 'cselall', 'selalldraft', 'selbatch', 'selallbatch', 'selrm', 'devok', 'pdec', 'fproject', 'stmt'].includes(a) && ACT[a]) ACT[a](el, e);
 });
 document.addEventListener('input', e => {
   const el = e.target; const l = el.dataset && el.dataset.live; if (!l) return; const id = el.dataset.id;
