@@ -171,6 +171,8 @@ const isOwner = () => role() === 'owner';
 const canRaise = () => role() === 'owner' || role() === 'accounts';
 const bankOf = id => S.banks.find(b => b.id === id);
 const payeeOf = id => S.payees.find(p => p.id === id);
+/* payee pickers: active payees; subcontractors only when starred in CAMELS */
+const pickPayees = () => S.payees.filter(p => p.is_active && (!p.subcontractor_id || p.is_starred));
 const batchOf = id => S.batches.find(b => b.id === id);
 const posOf = id => S.pos.find(p => p.project_id === id);
 const linesOf = bid => S.reqs.filter(r => r.batch_id === bid).sort((a, b) => a.req_no.localeCompare(b.req_no));
@@ -381,8 +383,8 @@ const gBlank = () => ({ p: '', y: '', c: 'labour', bill: '', g: '', t: '', d: ''
 function gRows() { if (!S.ui.grid) S.ui.grid = Array.from({ length: 8 }, gBlank); return S.ui.grid; }
 function gPayeeMap() {
   const names = {}, labels = {};
-  S.payees.filter(p => p.is_active).forEach(p => { names[p.name] = (names[p.name] || 0) + 1; });
-  S.payees.filter(p => p.is_active).forEach(p => { labels[names[p.name] > 1 ? `${p.name} [${(p.account_no || '').slice(-4) || 'no a/c'}]` : p.name] = p.id; });
+  pickPayees().forEach(p => { names[p.name] = (names[p.name] || 0) + 1; });
+  pickPayees().forEach(p => { labels[names[p.name] > 1 ? `${p.name} [${(p.account_no || '').slice(-4) || 'no a/c'}]` : p.name] = p.id; });
   return labels;
 }
 function gPayeeId(label, labels) {
@@ -577,8 +579,8 @@ function initBillUi(r) {
 function reqFormHtml(r) {
   r = r || {};
   const labels = {}; const names = {};
-  S.payees.filter(p => p.is_active).forEach(p => { names[p.name] = (names[p.name] || 0) + 1; });
-  const opts = S.payees.filter(p => p.is_active).map(p => { const l = names[p.name] > 1 ? `${p.name} [${(p.account_no || '').slice(-4) || 'no a/c'}]` : p.name; labels[l] = p.id; return `<option value="${esc(l)}"></option>`; }).join('');
+  pickPayees().forEach(p => { names[p.name] = (names[p.name] || 0) + 1; });
+  const opts = pickPayees().map(p => { const l = names[p.name] > 1 ? `${p.name} [${(p.account_no || '').slice(-4) || 'no a/c'}]` : p.name; labels[l] = p.id; return `<option value="${esc(l)}"></option>`; }).join('');
   S.ui._payeeLabels = labels;
   const cur = r.payee_id && payeeOf(r.payee_id);
   const curLabel = cur ? (Object.entries(labels).find(([, id]) => id === cur.id) || [cur.name])[0] : '';
@@ -837,7 +839,7 @@ function vInflow() {
   <div class="card"><h3 style="margin-bottom:8px">Enter past payments (already paid)</h3>
     <p class="mut" style="font-size:12.5px;margin:0 0 8px">For outflows already made, so each project's headroom is correct. These skip the approval flow, are marked <b>Past entry</b> and are logged. Payments dated before a project's opening-position date are already inside that opening figure and are not counted again.</p>
     <div class="grid3"><div class="field"><label>Project</label><select id="pp-project"><option value="">Select…</option>${proj.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div>
-      <div class="field"><label>Payee (pick, or type a name)</label><input id="pp-payee" list="ppList" autocomplete="off"><datalist id="ppList">${S.payees.filter(p => p.is_active).map(p => `<option value="${esc(p.name)}">`).join('')}</datalist></div>
+      <div class="field"><label>Payee (pick, or type a name)</label><input id="pp-payee" list="ppList" autocomplete="off"><datalist id="ppList">${pickPayees().map(p => `<option value="${esc(p.name)}">`).join('')}</datalist></div>
       <div class="field"><label>Category</label><select id="pp-cat">${Object.entries(CATS).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('')}</select></div></div>
     <div class="grid3"><div class="field"><label>Gross amount (₹)</label><input id="pp-gross" type="number" step="0.01" min="0"></div>
       <div class="field"><label>TDS (₹)</label><input id="pp-tds" type="number" step="0.01" min="0" value="0"></div>
