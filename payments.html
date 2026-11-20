@@ -102,7 +102,13 @@ textarea{min-height:60px;resize:vertical}
 .kv{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:13px}.kv span:nth-child(odd){color:var(--steel)}
 .empty{padding:28px;text-align:center;color:var(--steel)}
 details>summary{cursor:pointer;font-weight:600}
-.gtbl td{padding:3px 4px;vertical-align:middle}.gtbl input,.gtbl select{width:100%;padding:6px 7px;font-size:13px}.gtbl select:disabled{opacity:.35}.gtbl select[data-c=p]{min-width:150px}.gtbl select[data-c=c]{min-width:125px}.gtbl select[data-c=pr]{min-width:95px}.gtbl select[data-c=dr]{min-width:190px}.gtbl select[data-c=db]{min-width:150px}.gtbl th{white-space:nowrap}
+.gtbl td{padding:3px 4px;vertical-align:middle}.gtbl input,.gtbl select{width:100%;padding:6px 7px;font-size:13px}.gtbl select:disabled{opacity:.35}.gtbl select[data-c=p]{min-width:150px}.gtbl select[data-c=c]{min-width:125px}.gtbl select[data-c=pr]{min-width:95px}.gtbl select[data-c=dr]{min-width:190px}.gtbl select[data-c=db]{min-width:150px}.gtbl th{white-space:nowrap}.gtbl select[data-c=bill]{min-width:125px}
+.lg{background:#EEEDEA;border:1px solid #D4D1CA;border-radius:8px;padding:10px 12px;margin:0 0 12px;color:#6F6C65;font-size:12.5px}
+.lg h4{margin:0 0 6px;font:700 11px 'Barlow',sans-serif;text-transform:uppercase;letter-spacing:.06em;color:#8A877F}
+.lg table{font-size:12px;color:#6F6C65;margin:4px 0}.lg th{color:#8A877F;border-bottom:1px solid #D4D1CA}.lg td{border-bottom:1px solid #E2DFD8;padding:4px 6px}
+.lg tr:hover td{background:transparent}.lg .tot td{font-weight:700;color:#4D4A44;border-bottom:none}
+.lg .sum{display:grid;grid-template-columns:1fr auto;gap:2px 14px;margin-top:6px}.lg .sum b{color:#4D4A44}
+.lg .warn{color:#9A5A1E;background:#FCEBD5;border-radius:6px;padding:5px 8px;margin-top:6px}.lg .okh{color:#6B7A92;margin-top:6px}
 </style>
 </head>
 <body>
@@ -203,6 +209,7 @@ function showNoAccess(email) {
     <button class="btn" data-act="logout">Sign out</button></div></div>`;
 }
 async function loadAll() {
+  Object.keys(LG).forEach(k => delete LG[k]);
   const r = realRole();
   const [banks, settings, pos, reqs, batches] = await Promise.all([
     qry(sb.from('pay_bank_accounts').select('*').order('code')),
@@ -381,6 +388,7 @@ function gCalc() {
     if (!r.p) { o.msg = 'Select project'; return o; }
     if (!o.payee) { o.msg = r.y ? 'Payee not in list' : 'Pick payee'; return o; }
     if (num(r.g) <= 0 || net <= 0) { o.msg = 'Check amount'; return o; }
+    { const py = payeeOf(o.payee); if (py && py.subcontractor_id && !r.bill) { o.msg = 'Select Bill ref'; return o; } }
     if (!(r.p in run)) run[r.p] = num((posOf(r.p) || {}).headroom) - pendingNet(r.p, null);
     o.dev = net > Math.max(run[r.p], 0); run[r.p] -= net; o.ok = true; return o;
   });
@@ -396,7 +404,7 @@ function gBodyHtml() {
     <td>${sel(i, 'p', S.projects.map(p => [p.id, p.name]), r.p, 'Project…')}</td>
     <td>${inp(i, 'y', 'text', r.y, 190).replace('<input ', '<input list="gpList" autocomplete="off" ')}</td>
     <td>${sel(i, 'c', Object.entries(CATS), r.c)}</td>
-    <td>${inp(i, 'bill', 'text', r.bill, 100)}</td>
+    <td>${sel(i, 'bill', [['Advance', 'Advance'], ['Against RA', 'Against RA']].concat(r.bill && !['Advance', 'Against RA'].includes(r.bill) ? [[r.bill, r.bill]] : []), r.bill, 'Bill ref…')}</td>
     <td>${inp(i, 'g', 'number', r.g, 100)}</td><td>${inp(i, 't', 'number', r.t, 80)}</td>
     <td class="r amt" id="g-net-${i}">—</td>
     <td>${inp(i, 'd', 'date', r.d, 120)}</td>
@@ -408,7 +416,7 @@ function gBodyHtml() {
 function vGrid() {
   return `<div class="card" style="margin-bottom:14px"><div class="row" style="margin-bottom:8px"><h3 style="margin:0">Excel-style entry</h3><span class="sp"></span>
     <button class="btn s" data-act="gridadd">+ 5 rows</button><button class="btn s" data-act="gridclear">Clear</button><button class="btn p" data-act="gridsave">Save all as drafts</button></div>
-    <p class="mut" style="font-size:12.5px;margin:0 0 8px">Type row by row, or <b>copy rows from Excel and paste into any cell</b> — columns in this order: Project, Payee, Category, Bill ref, Gross, TDS, Due date, Priority. Each row shows an inflow check. Deviation rows need a reason and a fund-from account. Rows are saved as drafts; you then submit them to the CEO.</p>
+    <p class="mut" style="font-size:12.5px;margin:0 0 8px">Type row by row, or <b>copy rows from Excel and paste into any cell</b> — columns in this order: Project, Payee, Category, Bill ref (Advance / Against RA), Gross, TDS, Due date, Priority. Each row shows an inflow check. Deviation rows need a reason and a fund-from account. Rows are saved as drafts; you then submit them to the CEO.</p>
     <div class="tw"><table class="gtbl"><thead><tr><th>#</th><th>Project</th><th>Payee</th><th>Category</th><th>Bill ref</th><th class="r">Gross ₹</th><th class="r">TDS ₹</th><th class="r">Net ₹</th><th>Due</th><th>Priority</th><th>Check</th><th>Deviation reason</th><th></th></tr></thead>
     <tbody id="grid-body">${gBodyHtml()}</tbody></table></div>
     <div class="row" style="margin-top:8px"><span id="g-sum" class="mut"></span></div></div>`;
@@ -443,10 +451,116 @@ function gPaste(el, text) {
       else if (col === 'g' || col === 't') row[col] = v.replace(/[₹,\s]/g, '');
       else if (col === 'd') row.d = gParseDate(v);
       else if (col === 'pr') row.pr = /urg/i.test(v) ? 'urgent' : 'normal';
+      else if (col === 'bill') row.bill = /^adv/i.test(v) ? 'Advance' : /^(ra\b|ra[ -]?\d|against)/i.test(v) ? 'Against RA' : v;
       else row[col] = v;
     });
   });
   $('#grid-body').innerHTML = gBodyHtml(); gUpdate();
+}
+
+
+/* ---------- subcontractor ledger panel (read-only, from CAMELS) ---------- */
+const LG = {};
+async function loadLedger(subId) {
+  const c = LG[subId]; if (c && Date.now() - c.t < 60000) return c.d;
+  const [bills, pays] = await Promise.all([
+    qry(sb.from('ra_bills').select('id,bill_no,period_from,period_to,status,debit_amount,gst_pct,ra_work_orders!inner(wo_ref,subcontractor_id,retention_pct,tds_pct,safety_pct,safety_amount,gst_pct,ra_projects(name)),ra_bill_line_entries(this_qty,ra_wo_line_items(agreed_rate))')
+      .eq('ra_work_orders.subcontractor_id', subId).in('status', ['submitted', 'approved', 'paid']).is('deleted_at', null).order('period_to', { ascending: true })),
+    qry(sb.from('ra_payments').select('id,bill_id,amount_paid,tds_amount,date_paid,payment_type').eq('subcontractor_id', subId).order('date_paid', { ascending: true }))
+  ]);
+  const B = (bills || []).map(b => {
+    const wo = b.ra_work_orders || {};
+    const sub = (b.ra_bill_line_entries || []).reduce((t, e) => t + num(e.this_qty) * num((e.ra_wo_line_items || {}).agreed_rate), 0);
+    const ded = sub * ((num(wo.retention_pct) + num(wo.tds_pct) + num(wo.safety_pct)) / 100) + (wo.safety_pct ? 0 : num(wo.safety_amount)) + num(b.debit_amount);
+    const gp = (b.gst_pct !== null && b.gst_pct !== undefined) ? num(b.gst_pct) : num(wo.gst_pct);
+    return { id: b.id, short: `RA ${b.bill_no} · ${wo.wo_ref || ''}`.trim(), project: (wo.ra_projects || {}).name || '', to: b.period_to, status: b.status, net: sub - ded + sub * gp / 100, direct: 0, alloc: 0 };
+  });
+  const P = (pays || []);
+  const settledOf = p => num(p.amount_paid) + num(p.tds_amount);
+  P.filter(p => p.bill_id).forEach(p => { const b = B.find(x => x.id === p.bill_id); if (b) b.direct += settledOf(p); });
+  let pool = sum(P.filter(p => !p.bill_id || !B.find(x => x.id === p.bill_id)), settledOf);
+  B.forEach(b => { const room = Math.max(b.net - b.direct, 0); const a = Math.min(room, pool); b.alloc = a; pool -= a; });
+  B.forEach(b => { b.settled = b.direct + b.alloc; b.pending = Math.max(b.net - b.settled, 0); });
+  const d = { bills: B, pays: P, billed: sum(B, b => b.net), ledgerSettled: sum(P, settledOf), advance: sum(P.filter(p => p.payment_type === 'advance'), p => p.amount_paid), excess: pool };
+  LG[subId] = { t: Date.now(), d }; return d;
+}
+/* requests raised in this app for the same subcontractor (any payee row linked to it) */
+function subReqs(subId, excludeId) {
+  const ids = new Set(S.payees.filter(p => p.subcontractor_id === subId).map(p => p.id));
+  return S.reqs.filter(r => ids.has(r.payee_id) && r.id !== excludeId);
+}
+function ledgerCalc(subId, d, excludeId) {
+  const R = subReqs(subId, excludeId);
+  const pipe = R.filter(r => ['draft', 'submitted', 'approved', 'batched', 'verified', 'released'].includes(r.status))
+    .map(r => ({ r, amt: r.status === 'draft' || r.status === 'submitted' ? num(r.net_amount) : num(r.approved_amount) }));
+  // paid through this app but not yet recorded in the CAMELS ledger (skip if the same amount+date is already in the ledger)
+  const modPaid = R.filter(r => r.status === 'paid').filter(r => !d.pays.some(p => Math.abs(num(p.amount_paid) - num(r.paid_amount)) < 0.5 && p.date_paid === r.paid_date))
+    .map(r => ({ r, amt: num(r.paid_amount) + ((!r.parent_id && Math.abs(num(r.paid_amount) - num(r.net_amount)) < 0.01) ? num(r.tds_amount) : 0) }));
+  const modTotal = sum(modPaid, x => x.amt), pipeTotal = sum(pipe, x => x.amt);
+  const outstanding = d.billed - d.ledgerSettled - modTotal;
+  return { pipe, pipeTotal, modPaid, modTotal, outstanding, available: outstanding - pipeTotal };
+}
+function ledgerHtml(py, d, c) {
+  const rows = d.bills.map(b => `<tr><td>${esc(b.short)}<div style="font-size:11px">${esc(b.project)} · ${b.to ? fdate(b.to) : ''} · ${esc(b.status)}</div></td><td class="r amt">${inr0(b.net)}</td><td class="r amt">${inr0(b.settled)}</td><td class="r amt"><b>${inr0(b.pending)}</b></td></tr>`).join('');
+  return `<div class="lg"><h4>Ledger — ${esc(py.name)} · from CAMELS (read-only)</h4>
+    ${d.bills.length ? `<div class="tw"><table><thead><tr><th>Bill</th><th class="r">Net bill</th><th class="r">Settled</th><th class="r">Pending</th></tr></thead><tbody>${rows}
+      <tr class="tot"><td>Total</td><td class="r amt">${inr0(d.billed)}</td><td class="r amt">${inr0(d.ledgerSettled + c.modTotal)}</td><td class="r amt">${inr0(sum(d.bills, b => b.pending))}</td></tr></tbody></table></div>` : '<div style="margin:4px 0">No submitted or approved RA bills in CAMELS yet for this subcontractor.</div>'}
+    <div class="sum"><span>Paid per CAMELS ledger (incl. TDS)${d.advance ? ` — of which advance ${inr0(d.advance)}` : ''}</span><b class="amt">${inr0(d.ledgerSettled)}</b>
+      ${c.modTotal ? `<span>Paid through Payments app, not yet in ledger</span><b class="amt">${inr0(c.modTotal)}</b>` : ''}
+      <span>Outstanding on bills</span><b class="amt">${inr0(c.outstanding)}</b>
+      ${c.pipe.length ? `<span>Already requested, not yet paid (${c.pipe.length})</span><b class="amt">${inr0(c.pipeTotal)}</b><span>Available to request</span><b class="amt">${inr0(c.available)}</b>` : ''}</div>
+    ${d.excess > 0.5 ? `<div class="okh">Payments exceed bills by ${inr0(d.excess)} — advance still to be adjusted.</div>` : ''}
+    <div id="rf-lghint"></div></div>`;
+}
+async function onPayeeChange() {
+  const box = $('#rf-ledger'); if (!box) return;
+  const py = S.ui._payeeLabels && payeeOf(S.ui._payeeLabels[$('#rf-payee').value.trim()]);
+  const tok = S.ui._lgTok = (S.ui._lgTok || 0) + 1;
+  S.ui._lg = null; fillRaSelect();
+  if (!py) { box.innerHTML = ''; return; }
+  if (!py.subcontractor_id) { box.innerHTML = '<div class="lg"><h4>Ledger</h4>This payee is not a CAMELS subcontractor, so there is no bill ledger to show.</div>'; return; }
+  box.innerHTML = '<div class="lg"><h4>Ledger</h4>Loading subcontractor ledger…</div>';
+  try {
+    const d = await loadLedger(py.subcontractor_id); if (tok !== S.ui._lgTok) return;
+    const excl = $('#modal-root [data-act="savereq"]') ? ($('#modal-root [data-act="savereq"]').dataset.id || null) : null;
+    S.ui._lg = { py, d, excl, c: ledgerCalc(py.subcontractor_id, d, excl) };
+    box.innerHTML = ledgerHtml(py, d, S.ui._lg.c); fillRaSelect(); onBillType(true); refreshLedgerHint();
+  } catch (e) { if (tok === S.ui._lgTok) box.innerHTML = `<div class="lg"><h4>Ledger</h4>Could not load the CAMELS ledger (${esc(cleanErr(e))}). You can still raise the request.</div>`; }
+}
+function fillRaSelect() {
+  const sel = $('#rf-rabill'); if (!sel) return; const L = S.ui._lg, want = S.ui._wantBill || sel.value;
+  const bills = L ? L.d.bills : [];
+  sel.innerHTML = '<option value="">On account — no specific bill</option>' + bills.map(b => `<option value="${b.id}">${esc(b.short)} — pending ${inr0(b.pending)}</option>`).join('');
+  if (want && bills.some(b => b.id === want)) sel.value = want;
+}
+function onBillType(keep) {
+  const t = $('#rf-billtype'); if (!t) return;
+  const ra = $('#rf-rabox'), ot = $('#rf-otherbox');
+  ra.style.display = (t.value === 'ra' && S.ui._lg && S.ui._lg.d.bills.length) ? '' : 'none';
+  ot.style.display = t.value === 'other' ? '' : 'none';
+  refreshLedgerHint();
+}
+function refreshLedgerHint() {
+  const h = $('#rf-lghint'); if (!h) return; const L = S.ui._lg; if (!L) { h.innerHTML = ''; return; }
+  const t = $('#rf-billtype').value, net = num($('#rf-gross').value) - num($('#rf-tds').value) - num($('#rf-oth').value);
+  if (!t || !(net > 0)) { h.innerHTML = ''; return; }
+  if (t === 'advance') { h.innerHTML = `<div class="okh">Advance of ${inr(net)} — to be adjusted against future RA bills.</div>`; return; }
+  if (t === 'other') { h.innerHTML = ''; return; }
+  const bid = $('#rf-rabill').value; let room, label;
+  if (bid) { const b = L.d.bills.find(x => x.id === bid); const inPipe = sum(L.c.pipe.filter(x => x.r.bill_id === bid), x => x.amt); room = (b ? b.pending : 0) - inPipe; label = 'the pending on ' + (b ? b.short : 'this bill'); }
+  else { room = L.c.available; label = 'the amount available to request against bills'; }
+  h.innerHTML = net > room + 0.5
+    ? `<div class="warn">This request (${inr(net)}) is ${inr(net - Math.max(room, 0))} more than ${esc(label)} (${inr(Math.max(room, 0))}). You can still save it — check the bill or raise it as an Advance.</div>`
+    : `<div class="okh">Within ${esc(label)} (${inr(room)}).</div>`;
+}
+function initBillUi(r) {
+  r = r || {}; const t = $('#rf-billtype'); if (!t) return;
+  const br = r.bill_ref || '';
+  if (/^advance/i.test(br)) t.value = 'advance';
+  else if (/^against ra/i.test(br)) { t.value = 'ra'; S.ui._wantBill = r.bill_id || ''; }
+  else if (br) { t.value = 'other'; $('#rf-other').value = br; }
+  else t.value = '';
+  S.ui._lg = null; onBillType(); onPayeeChange();
 }
 
 function reqFormHtml(r) {
@@ -461,11 +575,14 @@ function reqFormHtml(r) {
     <h2>${r.id ? 'Edit request ' + esc(r.req_no) : 'New payment request'}</h2>
     <div class="grid2"><div class="field"><label>Project</label><select id="rf-project" data-live="gate"><option value="">Select…</option>${S.projects.map(p => `<option value="${p.id}" ${r.project_id === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div>
       <div class="field"><label>Category</label><select id="rf-cat">${Object.entries(CATS).map(([k, v]) => `<option value="${k}" ${(r.category || 'labour') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div></div>
-    <div class="field"><label>Payee (pick from list)</label><input id="rf-payee" list="payeeList" autocomplete="off" value="${esc(curLabel)}" placeholder="Start typing a name…"><datalist id="payeeList">${opts}</datalist>
+    <div class="field"><label>Payee (pick from list)</label><input id="rf-payee" data-live="payee" list="payeeList" autocomplete="off" value="${esc(curLabel)}" placeholder="Start typing a name…"><datalist id="payeeList">${opts}</datalist>
       <div class="mut" style="font-size:12px;margin-top:3px">Not listed? Add the vendor under <b>Payees</b> first (bank account + IFSC are needed for the bank file).</div></div>
-    <div class="grid3"><div class="field"><label>Bill / invoice ref</label><input id="rf-bill" value="${esc(r.bill_ref || '')}"></div>
+    <div id="rf-ledger"></div>
+    <div class="grid3"><div class="field"><label>Bill ref</label><select id="rf-billtype" data-live="billtype"><option value="">Select…</option><option value="advance">Advance</option><option value="ra">Against RA</option><option value="other">Other invoice / ref</option></select></div>
       <div class="field"><label>Due date</label><input id="rf-due" type="date" value="${esc(r.due_date || '')}"></div>
       <div class="field"><label>Priority</label><select id="rf-prio"><option value="normal">Normal</option><option value="urgent" ${r.priority === 'urgent' ? 'selected' : ''}>Urgent</option></select></div></div>
+    <div id="rf-rabox" class="field" style="display:none"><label>Which RA bill?</label><select id="rf-rabill" data-live="rabill"><option value="">On account — no specific bill</option></select></div>
+    <div id="rf-otherbox" class="field" style="display:none"><label>Invoice / reference no.</label><input id="rf-other" placeholder="e.g. vendor invoice number"></div>
     <div class="field"><label>Description / purpose</label><input id="rf-desc" value="${esc(r.description || '')}" placeholder="e.g. Shuttering labour, week ending 30 Oct"></div>
     <div class="grid3"><div class="field"><label>Gross amount (₹)</label><input id="rf-gross" type="number" step="0.01" min="0" value="${esc(r.gross_amount ?? '')}" data-live="gate"></div>
       <div class="field"><label>TDS (₹)</label><input id="rf-tds" type="number" step="0.01" min="0" value="${esc(r.tds_amount ?? 0)}" data-live="gate"></div>
@@ -481,6 +598,7 @@ function reqFormHtml(r) {
 }
 function updateGate() {
   const g = $('#rf-gate'); if (!g) return;
+  refreshLedgerHint();
   const pid = $('#rf-project').value, id = $('#modal-root [data-act="savereq"]').dataset.id || null;
   const net = num($('#rf-gross').value) - num($('#rf-tds').value) - num($('#rf-oth').value);
   if (!pid) { g.innerHTML = '<div class="gate" style="background:#F2EFE8">Select a project to see the client-inflow check.</div>'; $('#rf-dev').style.display = 'none'; return; }
@@ -893,15 +1011,20 @@ const ACT = {
   fproject(el) { S.ui.project = el.value; renderMain(); },
   selreq(el) { el.checked ? S.ui.sel.add(el.dataset.id) : S.ui.sel.delete(el.dataset.id); renderMain(); },
   selalldraft(el) { S.reqs.filter(r => r.status === 'draft').forEach(r => el.checked ? S.ui.sel.add(r.id) : S.ui.sel.delete(r.id)); renderMain(); },
-  newreq() { openModal(reqFormHtml()); updateGate(); },
-  editreq(el) { openModal(reqFormHtml(S.reqs.find(r => r.id === el.dataset.id))); updateGate(); },
+  newreq() { openModal(reqFormHtml()); updateGate(); initBillUi(); },
+  editreq(el) { const rr = S.reqs.find(r => r.id === el.dataset.id); openModal(reqFormHtml(rr)); updateGate(); initBillUi(rr); },
   async savereq(el) {
     const id = el.dataset.id || null; const pid = $('#rf-project').value; const lbl = $('#rf-payee').value.trim();
     const payee_id = (S.ui._payeeLabels || {})[lbl]; const p = payee_id && payeeOf(payee_id);
     if (!pid) return toast('Select a project', true); if (!p) return toast('Pick the payee from the list (add it under Payees if new)', true);
     const gross = num($('#rf-gross').value), tds = num($('#rf-tds').value), oth = num($('#rf-oth').value);
     if (gross <= 0 || gross - tds - oth <= 0) return toast('Enter a gross amount; net must be above zero', true);
-    const row = { project_id: pid, payee_id: p.id, payee_name: p.name, category: $('#rf-cat').value, bill_ref: $('#rf-bill').value.trim() || null, due_date: $('#rf-due').value || null,
+    const bt = $('#rf-billtype').value; let bill_ref = null, bill_id = null;
+    if (p.subcontractor_id && !bt) return toast('Select the Bill ref: Advance or Against RA', true);
+    if (bt === 'advance') bill_ref = 'Advance';
+    else if (bt === 'ra') { const sel = $('#rf-rabill').value; const bb = sel && S.ui._lg && S.ui._lg.d.bills.find(x => x.id === sel); bill_ref = bb ? 'Against RA — ' + bb.short : 'Against RA'; bill_id = bb ? bb.id : null; }
+    else if (bt === 'other') bill_ref = $('#rf-other').value.trim() || null;
+    const row = { project_id: pid, payee_id: p.id, payee_name: p.name, category: $('#rf-cat').value, bill_ref, bill_id, due_date: $('#rf-due').value || null,
       priority: $('#rf-prio').value, description: $('#rf-desc').value.trim() || null, gross_amount: gross, tds_amount: tds, other_deduction: oth,
       dev_reason_code: $('#rf-dreason').value || null, dev_expected_inflow_date: $('#rf-ddate').value || null,
       dev_expected_inflow_amount: $('#rf-damt').value ? num($('#rf-damt').value) : null, dev_note: $('#rf-dnote').value.trim() || null };
@@ -1161,6 +1284,9 @@ document.addEventListener('input', e => {
   const el = e.target; const l = el.dataset && el.dataset.live; if (!l) return; const id = el.dataset.id;
   if (l === 'g') { gRows()[+el.dataset.r][el.dataset.c] = el.value; gUpdate(); }
   else if (l === 'gate') updateGate();
+  else if (l === 'payee') onPayeeChange();
+  else if (l === 'billtype') onBillType();
+  else if (l === 'rabill') refreshLedgerHint();
   else if (l === 'fq') { S.ui.q = el.value; const pos = el.selectionStart; renderMain(); const n = $('#f-q'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } }
   else if (l === 'payeeq') { S.ui.payeeQ = el.value; const pos = el.selectionStart; renderMain(); const n = $('#pq'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } }
   else if (l === 'auditq') { S.ui.auditQ = el.value; const pos = el.selectionStart; renderMain(); const n = $('#aq'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } }
