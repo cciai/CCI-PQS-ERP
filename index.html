@@ -1960,6 +1960,7 @@ function renderWODetail(project){
   document.getElementById('backToWOList').onclick = () => { state.viewingWOId = null; state.woDetail = null; renderMain(); };
   document.getElementById('newBillBtn').onclick = async () => {
     const btn = document.getElementById('newBillBtn');
+    if(wo.status==='draft'){ toast('This Work Order is still a draft — edit it and choose Create Work Order before billing.', true); return; }
     btn.disabled = true; btn.textContent = 'Creating…';
     const bill = await createDraftBill(wo.id);
     if(bill){
@@ -2589,14 +2590,15 @@ function renderBillsTab(project){
 
   document.getElementById('newBillFromBillsTabBtn').onclick = () => {
     const picker = document.getElementById('newBillPicker');
-    if(!state.workOrders.length){ toast('No Work Orders on this project yet — create one under the Work Orders tab first.', true); return; }
+    const billableWOs = state.workOrders.filter(wo => wo.status !== 'draft');
+    if(!billableWOs.length){ toast('No Work Orders on this project yet — create one under the Work Orders tab first (drafts can\'t be billed).', true); return; }
     picker.style.display = 'block';
     picker.innerHTML = `
       <div class="wo-form" style="margin-bottom:16px;">
         <div class="field">
           <label>Choose a Work Order to bill against</label>
           <select id="newBillWOSelect">
-            ${state.workOrders.map(wo => `<option value="${wo.id}">#${wo.order_no} — ${escapeHtml(wo.ra_subcontractors?wo.ra_subcontractors.name:'')} (${escapeHtml(wo.wo_ref)})</option>`).join('')}
+            ${billableWOs.map(wo => `<option value="${wo.id}">#${wo.order_no} — ${escapeHtml(wo.ra_subcontractors?wo.ra_subcontractors.name:'')} (${escapeHtml(wo.wo_ref)})</option>`).join('')}
           </select>
         </div>
         <div class="modal-actions">
@@ -3224,7 +3226,7 @@ function renderWorkOrdersTab(project){
           <td class="num">${wo.safety_pct?wo.safety_pct+'%':'₹'+fmtNum(wo.safety_amount||0)}</td>
           <td class="num">${wo.gst_pct||0}%</td>
           <td class="num">${lineCount}</td>
-          <td><span class="badge ${wo.status==='active'?'billable':'internal'}">${wo.status}</span></td>
+          <td><span class="badge ${wo.status==='active'?'billable':'internal'}" ${wo.status==='draft'?'style="background:#FFF4D6;color:#8A6200;"':''}>${wo.status==='draft'?'Draft':wo.status}</span></td>
           <td class="dt-actions">
             <button class="icon-btn dt-view" title="View / Bills">📄</button>
             <button class="icon-btn dt-print" title="Print / PDF"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg></button>
@@ -3336,7 +3338,8 @@ function renderNewWOForm(project, editingWOId){
 
       <div class="modal-actions" style="margin-top:24px;">
         <button class="btn" id="cancelWOBtn">Cancel</button>
-        <button class="btn primary" id="saveWOBtn" ${!billableItems.length ? 'disabled' : ''}>${editing ? 'Save Changes' : 'Create Work Order'}</button>
+        ${(!editing || editWO.status==='draft') ? `<button class="btn" id="saveDraftBtn" ${!billableItems.length ? 'disabled' : ''} title="Save without finishing — it won't be billable until you create it as a Work Order">Save as Draft</button>` : ''}
+        <button class="btn primary" id="saveWOBtn" ${!billableItems.length ? 'disabled' : ''}>${editing && editWO.status!=='draft' ? 'Save Changes' : 'Create Work Order'}</button>
       </div>
     </div>
   `;
@@ -3615,10 +3618,10 @@ function renderNewWOForm(project, editingWOId){
   };
 
   document.getElementById('cancelWOBtn').onclick = () => { state.creatingWO = false; state.editingWOId = null; state.editingWOOriginalLineIds = null; state.addingWOLine = false; renderMain(); };
-  document.getElementById('saveWOBtn').onclick = async () => {
+  const saveWO = async (asDraft) => {
     const subcontractor_id = scIdField.value;
-    const wo_ref = document.getElementById('woRef').value.trim();
-    const wo_date = document.getElementById('woDate').value;
+    let wo_ref = document.getElementById('woRef').value.trim();
+    let wo_date = document.getElementById('woDate').value;
     const nature_of_work = document.getElementById('woNature').value.trim();
     const retention_pct = parseFloat(document.getElementById('woRetention').value) || 0;
     const tds_pct = parseFloat(document.getElementById('woTds').value) || 0;
@@ -3628,13 +3631,24 @@ function renderNewWOForm(project, editingWOId){
     const terms_and_conditions = document.getElementById('woTerms').value;
 
     if(!subcontractor_id){ toast('Select a subcontractor.', true); return; }
-    if(!wo_ref){ toast('WO reference number is required.', true); return; }
-    if(!wo_date){ toast('WO date is required.', true); return; }
-    if(!state.newWOLines.length){ toast('Add at least one line item.', true); return; }
-    if(state.newWOLines.some(l => !l.agreed_rate)){ toast('Every line item needs an agreed rate.', true); return; }
+    if(asDraft){
+      // A draft only needs a subcontractor — fill the rest with safe placeholders; incomplete lines (no rate) are left out.
+      if(!wo_ref) wo_ref = 'DRAFT-' + Date.now().toString().slice(-6);
+      if(!wo_date) wo_date = new Date().toISOString().slice(0,10);
+      const dropped = state.newWOLines.filter(l => !l.agreed_rate).length;
+      if(dropped){ state.newWOLines = state.newWOLines.filter(l => l.agreed_rate); toast(dropped + ' line(s) without a rate were left out of the draft.'); }
+    } else {
+      if(!wo_ref){ toast('WO reference number is required.', true); return; }
+      if(!wo_date){ toast('WO date is required.', true); return; }
+      if(!state.newWOLines.length){ toast('Add at least one line item.', true); return; }
+      if(state.newWOLines.some(l => !l.agreed_rate)){ toast('Every line item needs an agreed rate.', true); return; }
+    }
 
-    const saveBtn = document.getElementById('saveWOBtn');
+    const saveBtn = document.getElementById(asDraft ? 'saveDraftBtn' : 'saveWOBtn');
+    const btnLabel = saveBtn.textContent;
     const payload = { wo_ref, wo_date, nature_of_work, retention_pct, tds_pct, safety_pct, safety_amount, gst_pct, terms_and_conditions };
+    if(asDraft) payload.status = 'draft';
+    else if(editing && editWO.status==='draft') payload.status = 'active';   // finishing a draft makes it a live WO
 
     if(editing){
       saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
@@ -3642,21 +3656,21 @@ function renderNewWOForm(project, editingWOId){
       if(ok){
         const linesOk = await reconcileWOLineItems(editingWOId, state.newWOLines, state.editingWOOriginalLineIds || new Set());
         if(linesOk){
-          toast('Work Order updated.');
+          toast(asDraft ? 'Draft saved.' : (editWO.status==='draft' ? 'Work Order created.' : 'Work Order updated.'));
           state.editingWOId = null; state.newWOLines = []; state.editingWOOriginalLineIds = null;
           await loadWorkOrders(project.id);
           renderMain();
           return;
         }
       }
-      saveBtn.disabled = false; saveBtn.textContent = 'Save Changes';
+      saveBtn.disabled = false; saveBtn.textContent = btnLabel;
     } else {
-      saveBtn.disabled = true; saveBtn.textContent = 'Creating…';
+      saveBtn.disabled = true; saveBtn.textContent = asDraft ? 'Saving…' : 'Creating…';
       const wo = await createWorkOrder({ project_id: project.id, subcontractor_id, ...payload });
       if(wo){
-        const ok = await createWOLineItems(wo.id, state.newWOLines);
+        const ok = state.newWOLines.length ? await createWOLineItems(wo.id, state.newWOLines) : true;
         if(ok){
-          toast('Work Order created.');
+          toast(asDraft ? 'Draft saved.' : 'Work Order created.');
           state.creatingWO = false;
           state.newWOLines = [];
           await loadWorkOrders(project.id);
@@ -3664,9 +3678,12 @@ function renderNewWOForm(project, editingWOId){
           return;
         }
       }
-      saveBtn.disabled = false; saveBtn.textContent = 'Create Work Order';
+      saveBtn.disabled = false; saveBtn.textContent = btnLabel;
     }
   };
+  document.getElementById('saveWOBtn').onclick = () => saveWO(false);
+  const draftBtn = document.getElementById('saveDraftBtn');
+  if(draftBtn) draftBtn.onclick = () => saveWO(true);
 }
 
 // Opens the edit form for an existing WO — loads full detail, pre-fills the
