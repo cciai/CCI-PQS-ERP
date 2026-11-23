@@ -109,6 +109,25 @@ details>summary{cursor:pointer;font-weight:600}
 .lg tr:hover td{background:transparent}.lg .tot td{font-weight:700;color:#4D4A44;border-bottom:none}
 .lg .sum{display:grid;grid-template-columns:1fr auto;gap:2px 14px;margin-top:6px}.lg .sum b{color:#4D4A44}
 .lg .warn{color:#9A5A1E;background:#FCEBD5;border-radius:6px;padding:5px 8px;margin-top:6px}.lg .okh{color:#6B7A92;margin-top:6px}
+
+.pc{position:fixed;z-index:9999;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 14px 40px rgba(27,42,74,.22);width:380px;max-width:calc(100vw - 16px);display:flex;flex-direction:column;overflow:hidden}
+.pc-top{padding:8px 8px 6px;border-bottom:1px solid var(--line);background:var(--paper)}
+.pc-chips{display:flex;gap:5px;flex-wrap:wrap}
+.pc-chip{border:1px solid var(--line);background:#fff;color:var(--steel);font:600 12px 'Barlow',sans-serif;padding:4px 10px;border-radius:14px;cursor:pointer}
+.pc-chip.on{background:var(--navy);border-color:var(--navy);color:#fff}
+.pc-hint{font-size:11.5px;color:var(--steel);margin-top:6px}
+.pc-list{max-height:300px;overflow-y:auto}
+.pc-it{display:flex;align-items:center;gap:9px;padding:8px 12px;cursor:pointer;border-bottom:1px solid #f1eee8}
+.pc-it.act{background:#F3EEE4}
+.pc-nm{font-weight:600;font-size:14px;line-height:1.2}
+.pc-sub{font-size:11.5px;color:var(--steel);margin-top:2px}
+.pc-main{flex:1;min-width:0}
+.pc-main .pc-nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pc-ty{font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 7px;border-radius:4px;flex:0 0 auto}
+.pc-ty.supplier{background:#E6EEF8;color:#2F6DB5} .pc-ty.subcontractor{background:#F6E9DD;color:#A8612F} .pc-ty.other{background:#ECECE6;color:#6B7A92}
+.pc-star{color:var(--amber);font-size:15px;flex:0 0 auto} .pc-ns{font-size:10.5px;color:#9a9484;flex:0 0 auto}
+.pc-empty{padding:18px 14px;text-align:center;color:var(--steel);font-size:13px}
+.pc-foot{padding:7px 12px;font-size:11.5px;color:var(--steel);background:var(--paper);border-top:1px solid var(--line)}
 </style>
 </head>
 <body>
@@ -175,7 +194,17 @@ const canSubmit = () => role() === 'owner' || role() === 'accounts';   // QS / a
 const bankOf = id => S.banks.find(b => b.id === id);
 const payeeOf = id => S.payees.find(p => p.id === id);
 /* payee pickers: active payees; subcontractors only when starred in CAMELS */
-const pickPayees = () => S.payees.filter(p => p.is_active && (!p.subcontractor_id || p.is_starred));
+const pickPayees = () => S.payees.filter(p => p.is_active && ((!p.subcontractor_id && !p.supplier_id) || p.is_starred));
+/* label map over ALL active payees (so un-starred suppliers / subcontractors can still be typed); duplicate names get [a/c last 4] */
+let _plCache = null;
+function payeeLabelMap() {
+  if (_plCache && _plCache.src === S.payees && _plCache.n === S.payees.length) return _plCache.labels;
+  const names = {}, labels = {}, rev = {}, act = S.payees.filter(p => p.is_active);
+  act.forEach(p => { names[p.name] = (names[p.name] || 0) + 1; });
+  act.forEach(p => { const l = names[p.name] > 1 ? `${p.name} [${(p.account_no || '').slice(-4) || 'no a/c'}]` : p.name; labels[l] = p.id; rev[p.id] = l; });
+  _plCache = { src: S.payees, n: S.payees.length, labels, rev }; return labels;
+}
+const payeeLabelOf = p => { payeeLabelMap(); return _plCache.rev[p.id] || p.name; };
 const batchOf = id => S.batches.find(b => b.id === id);
 const posOf = id => S.pos.find(p => p.project_id === id);
 const linesOf = bid => S.reqs.filter(r => r.batch_id === bid).sort((a, b) => a.req_no.localeCompare(b.req_no));
@@ -386,12 +415,7 @@ function vReqs() {
 const GCOLS = ['p', 'y', 'c', 'bill', 'g', 't', 'd', 'pr'];
 const gBlank = () => ({ p: '', y: '', c: 'labour', bill: '', g: '', t: '', d: '', pr: 'normal', dr: 'client_inflow_delayed', ds: '' });
 function gRows() { if (!S.ui.grid) S.ui.grid = Array.from({ length: 8 }, gBlank); return S.ui.grid; }
-function gPayeeMap() {
-  const names = {}, labels = {};
-  pickPayees().forEach(p => { names[p.name] = (names[p.name] || 0) + 1; });
-  pickPayees().forEach(p => { labels[names[p.name] > 1 ? `${p.name} [${(p.account_no || '').slice(-4) || 'no a/c'}]` : p.name] = p.id; });
-  return labels;
-}
+function gPayeeMap() { return payeeLabelMap(); }
 function gPayeeId(label, labels) {
   const v = (label || '').trim(); if (!v) return null; if (labels[v]) return labels[v];
   const k = Object.keys(labels).find(x => x.toLowerCase() === v.toLowerCase()); return k ? labels[k] : null;
@@ -414,13 +438,12 @@ function gCalc() {
 function gBodyHtml() {
   const rows = gRows();
   const labels = gPayeeMap();
-  const opts = Object.keys(labels).map(l => `<option value="${esc(l)}"></option>`).join('');
   const sel = (i, c, list, cur, blank) => `<select data-live="g" data-r="${i}" data-c="${c}">${blank ? '<option value="">' + blank + '</option>' : ''}${list.map(([k, v]) => `<option value="${esc(k)}" ${cur === k ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select>`;
   const inp = (i, c, t, cur, w) => `<input data-live="g" data-r="${i}" data-c="${c}" type="${t}" ${t === 'number' ? 'step="0.01" min="0"' : ''} value="${esc(cur)}" style="min-width:${w}px">`;
-  return `<datalist id="gpList">${opts}</datalist>` + rows.map((r, i) => `<tr>
+  return rows.map((r, i) => `<tr>
     <td class="mut">${i + 1}</td>
     <td>${sel(i, 'p', S.projects.map(p => [p.id, p.name]), r.p, 'Project…')}</td>
-    <td>${inp(i, 'y', 'text', r.y, 190).replace('<input ', '<input list="gpList" autocomplete="off" ')}</td>
+    <td>${inp(i, 'y', 'text', r.y, 190).replace('<input ', '<input data-pc="g" autocomplete="off" placeholder="Pick or type payee…" ')}</td>
     <td>${sel(i, 'c', Object.entries(CATS), r.c)}</td>
     <td>${sel(i, 'bill', [['Advance', 'Advance'], ['Against RA', 'Against RA']].concat(r.bill && !['Advance', 'Against RA'].includes(r.bill) ? [[r.bill, r.bill]] : []), r.bill, 'Bill ref…')}</td>
     <td>${inp(i, 'g', 'number', r.g, 100)}</td><td>${inp(i, 't', 'number', r.t, 80)}</td>
@@ -583,9 +606,7 @@ function initBillUi(r) {
 
 function reqFormHtml(r) {
   r = r || {};
-  const labels = {}; const names = {};
-  pickPayees().forEach(p => { names[p.name] = (names[p.name] || 0) + 1; });
-  const opts = pickPayees().map(p => { const l = names[p.name] > 1 ? `${p.name} [${(p.account_no || '').slice(-4) || 'no a/c'}]` : p.name; labels[l] = p.id; return `<option value="${esc(l)}"></option>`; }).join('');
+  const labels = payeeLabelMap();
   S.ui._payeeLabels = labels;
   const cur = r.payee_id && payeeOf(r.payee_id);
   const curLabel = cur ? (Object.entries(labels).find(([, id]) => id === cur.id) || [cur.name])[0] : '';
@@ -593,7 +614,7 @@ function reqFormHtml(r) {
     <h2>${r.id ? 'Edit request ' + esc(r.req_no) : 'New payment request'}</h2>
     <div class="grid2"><div class="field"><label>Project</label><select id="rf-project" data-live="gate"><option value="">Select…</option>${S.projects.map(p => `<option value="${p.id}" ${r.project_id === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div>
       <div class="field"><label>Category</label><select id="rf-cat">${Object.entries(CATS).map(([k, v]) => `<option value="${k}" ${(r.category || 'labour') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div></div>
-    <div class="field"><label>Payee (pick from list)</label><input id="rf-payee" data-live="payee" list="payeeList" autocomplete="off" value="${esc(curLabel)}" placeholder="Start typing a name…"><datalist id="payeeList">${opts}</datalist>
+    <div class="field"><label>Payee <span style="text-transform:none;letter-spacing:0;font-weight:500">— starred ★ shown first; type to find any supplier or subcontractor</span></label><input id="rf-payee" data-live="payee" data-pc="rf" autocomplete="off" value="${esc(curLabel)}" placeholder="Pick from the list, or type any name…">
       <div class="mut" style="font-size:12px;margin-top:3px">Not listed? Add the vendor under <b>Payees</b> first (bank account + IFSC are needed for the bank file).</div></div>
     <div id="rf-ledger"></div>
     <div class="grid3"><div class="field"><label>Bill ref</label><select id="rf-billtype" data-live="billtype"><option value="">Select…</option><option value="advance">Advance</option><option value="ra">Against RA</option><option value="other">Other invoice / ref</option></select></div>
@@ -626,6 +647,18 @@ function updateGate() {
     ? `<div class="gate dev"><b>Deviation:</b> net ${inr(net)} exceeds available client inflow of ${inr(Math.max(head, 0))} by <b>${inr(short)}</b>. Add the deviation details below — the CEO must approve it explicitly.</div>`
     : `<div class="gate ok"><b>Within client inflow.</b> Net ${inr(net)} against available ${inr(head)}.</div>`;
   $('#rf-dev').style.display = short > 0 ? '' : 'none';
+}
+const ceoLink = () => location.origin.replace(/^null$/, '') + location.pathname + '#ceo';
+function ceoMsg(list) {
+  const dev = list.filter(r => r.is_deviation);
+  return `CCI payments for your approval: ${list.length} request${list.length > 1 ? 's' : ''}, total ${inr0(sum(list, r => r.net_amount))}${dev.length ? ` (${dev.length} above client inflow)` : ''}.\nOpen and approve: ${ceoLink()}`;
+}
+function showSentModal(list) {
+  S.ui.sentMsg = ceoMsg(list);
+  openModal(`<div class="ovl" data-act="ovl"><div class="modal" style="max-width:520px"><div class="row"><h2>Sent to CEO</h2><span class="sp"></span><button class="btn s" data-act="closemodal">Close</button></div>
+    <p style="margin:8px 0">${list.length} request${list.length > 1 ? 's' : ''} · ${inr0(sum(list, r => r.net_amount))} are now in the CEO's queue. Send him this link — it opens the Payments app straight on his approvals (he signs in first):</p>
+    <input id="sent-link" readonly value="${esc(ceoLink())}" style="width:100%" onclick="this.select()">
+    <div class="row" style="margin-top:12px;flex-wrap:wrap"><button class="btn p" data-act="copylink">Copy link</button><button class="btn a" data-act="wa-sent">Send on WhatsApp</button></div></div></div>`);
 }
 function openModal(html) { $('#modal-root').innerHTML = html; }
 function closeModal() { $('#modal-root').innerHTML = ''; }
@@ -844,7 +877,7 @@ function vInflow() {
   <div class="card"><h3 style="margin-bottom:8px">Enter past payments (already paid)</h3>
     <p class="mut" style="font-size:12.5px;margin:0 0 8px">For outflows already made, so each project's headroom is correct. These skip the approval flow, are marked <b>Past entry</b> and are logged. Payments dated before a project's opening-position date are already inside that opening figure and are not counted again.</p>
     <div class="grid3"><div class="field"><label>Project</label><select id="pp-project"><option value="">Select…</option>${proj.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div>
-      <div class="field"><label>Payee (pick, or type a name)</label><input id="pp-payee" list="ppList" autocomplete="off"><datalist id="ppList">${pickPayees().map(p => `<option value="${esc(p.name)}">`).join('')}</datalist></div>
+      <div class="field"><label>Payee (pick, or type a name)</label><input id="pp-payee" data-pc="pp" autocomplete="off" placeholder="Pick or type a name…"></div>
       <div class="field"><label>Category</label><select id="pp-cat">${Object.entries(CATS).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('')}</select></div></div>
     <div class="grid3"><div class="field"><label>Gross amount (₹)</label><input id="pp-gross" type="number" step="0.01" min="0"></div>
       <div class="field"><label>TDS (₹)</label><input id="pp-tds" type="number" step="0.01" min="0" value="0"></div>
@@ -1147,11 +1180,17 @@ const ACT = {
       const res = await rpc('pay_submit', { p_ids: ids }); S.ui.sel.clear();
       if (res.errors && res.errors.length) alert('Some requests were not submitted:\n\n' + res.errors.map(e => `${e.ref}: ${e.error}`).join('\n'));
       toast(`${res.ok} submitted to CEO`); await refresh();
+      if (res.ok > 0) {
+        const bad = new Set((res.errors || []).map(e => e.id)), sent = S.reqs.filter(r => ids.includes(r.id) && !bad.has(r.id) && r.status === 'submitted');
+        if (sent.length) showSentModal(sent);
+      }
     });
   },
+  copylink() { const t = S.ui.sentMsg || ceoLink(); const done = () => toast('Copied — paste it into WhatsApp / mail'); if (navigator.clipboard) navigator.clipboard.writeText(t).then(done, () => { const i = $('#sent-link'); if (i) { i.select(); document.execCommand('copy'); done(); } }); else { const i = $('#sent-link'); if (i) { i.select(); document.execCommand('copy'); done(); } } },
+  'wa-sent'() { window.open('https://wa.me/?text=' + encodeURIComponent(S.ui.sentMsg || ceoLink()), '_blank'); },
   'wa-ceo'() {
     const q = S.reqs.filter(r => r.status === 'submitted'); const dev = q.filter(r => r.is_deviation);
-    const msg = `CCI payments awaiting your approval: ${q.length} line(s), ${inr0(sum(q, r => r.net_amount))}${dev.length ? `, of which ${dev.length} deviation(s) above client inflow` : ''}. Please approve here: ${location.href.split('#')[0]}`;
+    const msg = `CCI payments awaiting your approval: ${q.length} line(s), ${inr0(sum(q, r => r.net_amount))}${dev.length ? `, of which ${dev.length} deviation(s) above client inflow` : ''}. Please approve here: ${ceoLink()}`;
     window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
   },
   async detail(el, e) {
@@ -1396,7 +1435,7 @@ const ACT = {
   async addpast() {
     const project = $('#pp-project').value, gross = num($('#pp-gross').value), tds = num($('#pp-tds').value), d = $('#pp-date').value, lbl = $('#pp-payee').value.trim();
     if (!project || !lbl || gross <= 0 || !d) return toast('Project, payee, amount and date paid are required', true);
-    const py = S.payees.find(x => x.name === lbl);
+    const py = payeeOf(gPayeeId(lbl, payeeLabelMap())) || S.payees.find(x => x.name === lbl);
     await guard(async () => {
       const res = await rpc('pay_backfill_payment', { p_project: project, p_payee_id: py ? py.id : null, p_payee_name: lbl, p_category: $('#pp-cat').value, p_gross: gross, p_tds: tds,
         p_paid_date: d, p_bank_account: $('#pp-bank').value || null, p_utr: $('#pp-utr').value.trim() || null, p_bill_ref: $('#pp-note').value.trim() || null, p_note: null });
@@ -1449,6 +1488,84 @@ document.addEventListener('click', e => {
   if (el.dataset.act === 'selreq') return;
   const fn = ACT[el.dataset.act]; if (fn) fn(el, e);
 });
+/* ---------- payee picker (combobox) ---------- */
+const PC = { el: null, input: null, scope: 'sug', items: [], idx: 0, userScope: false };
+const pcKind = p => p.supplier_id ? 'supplier' : p.subcontractor_id ? 'subcontractor' : 'other';
+const pcKindLbl = { supplier: 'Supplier', subcontractor: 'Subcontractor', other: 'Vendor' };
+function pcCategory(inp) {
+  const k = inp.dataset.pc;
+  if (k === 'g') { const r = gRows()[+inp.dataset.r]; return r ? r.c : ''; }
+  const c = $(k === 'rf' ? '#rf-cat' : '#pp-cat'); return c ? c.value : '';
+}
+function pcCandidates(inp) {
+  const act = S.payees.filter(p => p.is_active), cat = pcCategory(inp);
+  const q = (inp.value || '').trim().toLowerCase();
+  const sugOf = p => { const k = pcKind(p); if (k === 'other') return true; if (!p.is_starred) return false; return cat === 'material' ? k === 'supplier' : (cat === 'subcontract' || cat === 'labour') ? k === 'subcontractor' : true; };
+  let list;
+  if (q) {
+    const words = q.split(/\s+/).filter(Boolean);
+    list = act.filter(p => { const hay = (p.name + ' ' + (p.gstin || '') + ' ' + (p.account_no || '').slice(-4)).toLowerCase(); return words.every(w => hay.includes(w)); });
+    list.sort((a, b) => { const sa = sugOf(a) && a.is_starred ? 0 : a.is_starred ? 1 : 2, sb = sugOf(b) && b.is_starred ? 0 : b.is_starred ? 1 : 2; const st = (b.name.toLowerCase().startsWith(q) ? 1 : 0) - (a.name.toLowerCase().startsWith(q) ? 1 : 0); return st || sa - sb || a.name.localeCompare(b.name); });
+    if (PC.scope === 'sup') list = list.filter(p => pcKind(p) === 'supplier'); else if (PC.scope === 'sub') list = list.filter(p => pcKind(p) === 'subcontractor');
+  } else {
+    if (PC.scope === 'sug') list = act.filter(sugOf); else if (PC.scope === 'sup') list = act.filter(p => pcKind(p) === 'supplier'); else if (PC.scope === 'sub') list = act.filter(p => pcKind(p) === 'subcontractor'); else list = act;
+    list = list.slice().sort((a, b) => (b.is_starred ? 1 : 0) - (a.is_starred ? 1 : 0) || a.name.localeCompare(b.name));
+  }
+  return { list, q, cat };
+}
+function pcRender() {
+  const inp = PC.input; if (!inp || !PC.el) return;
+  const { list, q, cat } = pcCandidates(inp), LIM = 40;
+  PC.items = list.slice(0, LIM); if (PC.idx >= PC.items.length) PC.idx = 0;
+  const chips = [['sug', cat === 'material' ? '★ Material suppliers' : '★ Suggested'], ['sup', 'All suppliers'], ['sub', 'All subcontractors'], ['all', 'Everyone']];
+  const sugNote = PC.scope === 'sug' && !q ? (cat === 'material' ? 'Starred suppliers for Material. Type to search un-starred ones too.' : 'Starred subcontractors and regular vendors. Type to search anyone.') : q ? `Searching all ${S.payees.filter(p => p.is_active).length} payees` : '';
+  const rows = PC.items.map((p, i) => { const k = pcKind(p); const sub = [p.gstin ? 'GST ' + p.gstin : '', p.account_no ? 'a/c …' + p.account_no.slice(-4) : 'no bank details'].filter(Boolean).join(' · ');
+    return `<div class="pc-it${i === PC.idx ? ' act' : ''}" data-pi="${i}"><div class="pc-main"><div class="pc-nm">${esc(p.name)}</div><div class="pc-sub">${esc(sub)}</div></div><span class="pc-ty ${k}">${pcKindLbl[k]}</span>${p.is_starred ? '<span class="pc-star" title="Starred">★</span>' : (k !== 'other' ? '<span class="pc-ns">not starred</span>' : '')}</div>`; }).join('');
+  PC.el.innerHTML = `<div class="pc-top"><div class="pc-chips">${chips.map(([k, l]) => `<button type="button" class="pc-chip${PC.scope === k ? ' on' : ''}" data-ps="${k}">${l}</button>`).join('')}</div>${sugNote ? `<div class="pc-hint">${sugNote}</div>` : ''}</div>
+    <div class="pc-list">${rows || `<div class="pc-empty">No payee matches “${esc(inp.value)}”.<br>Add new vendors under the <b>Payees</b> tab (bank a/c + IFSC needed).</div>`}</div>
+    <div class="pc-foot">${list.length > LIM ? `Showing ${LIM} of ${list.length} — keep typing to narrow` : `${list.length} payee${list.length === 1 ? '' : 's'}`} · ↑↓ to move · Enter to pick · Esc to close</div>`;
+  const act = PC.el.querySelector('.pc-it.act'); if (act) act.scrollIntoView({ block: 'nearest' });
+}
+function pcPlace() {
+  const r = PC.input.getBoundingClientRect(), w = Math.max(r.width, 380), vh = window.innerHeight;
+  PC.el.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + 'px';
+  PC.el.style.width = w + 'px';
+  const below = vh - r.bottom;
+  if (below < 300 && r.top > below) { PC.el.style.top = 'auto'; PC.el.style.bottom = (vh - r.top + 4) + 'px'; } else { PC.el.style.bottom = 'auto'; PC.el.style.top = (r.bottom + 4) + 'px'; }
+}
+function pcOpen(inp) {
+  if (PC.input === inp && PC.el) return;
+  pcClose(); PC.input = inp; PC.scope = 'sug'; PC.idx = 0;
+  PC.el = document.createElement('div'); PC.el.className = 'pc'; document.body.appendChild(PC.el);
+  pcPlace(); pcRender();
+}
+function pcClose() { if (PC.el) PC.el.remove(); PC.el = null; PC.input = null; }
+function pcPick(i) {
+  const p = PC.items[i], inp = PC.input; if (!p || !inp) return;
+  inp.value = payeeLabelOf(p); pcClose();
+  inp.dispatchEvent(new Event('input', { bubbles: true })); inp.dispatchEvent(new Event('change', { bubbles: true }));
+}
+document.addEventListener('focusin', e => { const t = e.target; if (t.dataset && t.dataset.pc) pcOpen(t); else if (PC.el && !PC.el.contains(t)) pcClose(); });
+document.addEventListener('input', e => { const t = e.target; if (t.dataset && t.dataset.pc && PC.input === t) { PC.idx = 0; pcRender(); } else if (e.isTrusted && t.dataset && t.dataset.pc && !PC.el) pcOpen(t); });
+document.addEventListener('mousedown', e => {
+  if (!PC.el) return;
+  const chip = e.target.closest('.pc-chip'), it = e.target.closest('.pc-it');
+  if (chip) { e.preventDefault(); PC.scope = chip.dataset.ps; PC.idx = 0; pcRender(); }
+  else if (it) { e.preventDefault(); pcPick(+it.dataset.pi); }
+  else if (PC.el.contains(e.target)) e.preventDefault();
+  else if (e.target !== PC.input) pcClose();
+});
+document.addEventListener('keydown', e => {
+  if (!PC.el || e.target !== PC.input) return;
+  if (e.key === 'ArrowDown') { e.preventDefault(); PC.idx = Math.min(PC.idx + 1, PC.items.length - 1); pcRender(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); PC.idx = Math.max(PC.idx - 1, 0); pcRender(); }
+  else if (e.key === 'Enter') { if (PC.items.length && PC.items[PC.idx]) { e.preventDefault(); pcPick(PC.idx); } }
+  else if (e.key === 'Escape') { e.stopPropagation(); pcClose(); }
+  else if (e.key === 'Tab') pcClose();
+}, true);
+window.addEventListener('resize', () => { if (PC.el) pcPlace(); });
+document.addEventListener('scroll', () => { if (PC.el) pcPlace(); }, true);
+
 document.addEventListener('change', e => {
   const el = e.target.closest('[data-act]'); if (!el) return; const a = el.dataset.act;
   if (['selreq', 'setplan', 'csel', 'cselall', 'selalldraft', 'selbatch', 'selallbatch', 'selrm', 'devok', 'pdec', 'fproject', 'stmt', 'gridxlsx', 'autoparam', 'autosel', 'autoproj', 'autopayee'].includes(a) && ACT[a]) ACT[a](el, e);
