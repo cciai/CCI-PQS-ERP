@@ -471,6 +471,7 @@
     </div>
     <div class="who">
       <span>👤 <span id="whoName">—</span> <span class="role-pill" id="whoRole">—</span></span>
+      <select id="roleTestSel" title="Owner only: preview the app as another role (read-only)" style="display:none;margin-left:8px;font-size:12px;padding:3px 6px;border-radius:6px;border:1px solid rgba(255,255,255,0.3);background:rgba(255,255,255,0.08);color:inherit;"><option value="owner" style="color:#000">Test as…</option><option value="pm" style="color:#000">PM</option><option value="qs" style="color:#000">QS</option><option value="accounts" style="color:#000">Accounts</option><option value="owner" style="color:#000">Back to Owner</option></select>
       <button class="signout" id="signOutBtn">Sign out</button>
     </div>
     <div class="app-nav">
@@ -510,6 +511,8 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let session = null;
 let myRole = null;
+let realRole = null;
+let roleTestOn = false;
 let myName = null;
 
 /* iOS Safari / WebKit sometimes drops a fetch right after the page becomes
@@ -727,15 +730,48 @@ async function loadMyRole(userId){
       sb.from('ra_user_roles').select('role, full_name').eq('user_id', userId).maybeSingle()
     );
     if(error){ console.error(error); return; }
-    if(data){ myRole = data.role; myName = data.full_name; }
+    if(data){ myRole = data.role; realRole = data.role; myName = data.full_name; }
   } catch(err){
     console.error('loadMyRole failed after retries:', err);
   }
 }
 
+/* ---- Role testing (owner only): preview the app as PM / QS / Accounts. UI permissions follow the chosen role;
+   all database writes are blocked while testing so nothing is saved by accident. ---- */
+(function(){
+  const origFrom = sb.from.bind(sb);
+  const mk = () => { const t = { then: (res) => res({ data: null, error: { message: 'Test mode — changes are not saved. Switch back to Owner to make changes.' } }) };
+    const px = new Proxy(t, { get: (o, k) => (k === 'then' ? o.then : () => px) }); return px; };
+  sb.from = (table) => {
+    const q = origFrom(table);
+    if(!roleTestOn) return q;
+    ['insert','update','upsert','delete'].forEach(m => { q[m] = () => mk(); });
+    return q;
+  };
+})();
+function setupRoleTest(){
+  const sel = document.getElementById('roleTestSel'); if(!sel) return;
+  const real = realRole === 'owner';
+  sel.style.display = real ? '' : 'none';
+  if(!real) return;
+  sel.value = roleTestOn ? myRole : 'owner';
+  let bn = document.getElementById('roleTestBanner');
+  if(!bn){ bn = document.createElement('div'); bn.id = 'roleTestBanner'; bn.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:9000;background:#C97C4A;color:#fff;text-align:center;font:600 13px Barlow,sans-serif;padding:7px 10px;display:none;'; document.body.appendChild(bn); }
+  document.getElementById('whoRole').textContent = myRole + (roleTestOn ? ' (test)' : '');
+  bn.style.display = roleTestOn ? '' : 'none';
+  bn.textContent = roleTestOn ? `TEST MODE — previewing as ${myRole.toUpperCase()} · read-only, nothing is saved · choose “Back to Owner” to exit` : '';
+  sel.onchange = async () => {
+    const v = sel.value;
+    roleTestOn = v !== 'owner'; myRole = v;
+    document.getElementById('whoRole').textContent = myRole + (roleTestOn ? ' (test)' : '');
+    state.selectedProjectId = null;
+    await showApp();
+  };
+}
+
 document.getElementById('signOutBtn').onclick = async () => {
   await sb.auth.signOut();
-  session = null; myRole = null; myName = null;
+  session = null; myRole = null; realRole = null; roleTestOn = false; myName = null;
   document.getElementById('appScreen').style.display = 'none';
   document.getElementById('loginScreen').style.display = 'flex';
 };
@@ -745,6 +781,7 @@ async function showApp(){
   document.getElementById('appScreen').style.display = 'grid';
   document.getElementById('whoName').textContent = myName || '—';
   document.getElementById('whoRole').textContent = myRole;
+  setupRoleTest();
   document.getElementById('navProjects').onclick = () => {
     state.selectedProjectId = null;
     renderProjectList();
