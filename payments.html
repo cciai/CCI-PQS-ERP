@@ -171,6 +171,7 @@ const testOn = () => canTest() && S.settings && S.settings.owner_test_mode === '
 const role = () => (testOn() && S.view) ? S.view : (S.me && S.me.role);
 const isOwner = () => role() === 'owner';
 const canRaise = () => role() === 'owner' || role() === 'accounts';
+const canSubmit = () => role() === 'owner' || role() === 'accounts';   // QS / accounts can send requests to the CEO
 const bankOf = id => S.banks.find(b => b.id === id);
 const payeeOf = id => S.payees.find(p => p.id === id);
 /* payee pickers: active payees; subcontractors only when starred in CAMELS */
@@ -257,8 +258,8 @@ function tabsFor() {
     batch: S.reqs.filter(r => r.status === 'approved').length
   };
   const T = {
-    owner: [['dash', 'Dashboard'], ['reqs', 'Requests'], ['appr', 'CEO queue', n.ceo], ['batches', 'Batches', n.batch], ['inflow', 'Inflows & limits'], ['payees', 'Payees'], ['audit', 'Audit'], ['admin', 'Admin']],
-    accounts: [['dash', 'Dashboard'], ['reqs', 'Requests'], ['batches', 'Batches', n.batch], ['inflow', 'Inflows'], ['payees', 'Payees'], ['audit', 'Audit']],
+    owner: [['dash', 'Dashboard'], ['reqs', 'Requests'], ['appr', 'CEO queue', n.ceo], ['batches', 'Batches', n.batch], ['inflow', 'Inflows & limits'], ['auto', 'Auto payment sheet'], ['payees', 'Payees'], ['audit', 'Audit'], ['admin', 'Admin']],
+    accounts: [['dash', 'Dashboard'], ['reqs', 'Requests'], ['batches', 'Batches', n.batch], ['inflow', 'Inflows'], ['auto', 'Auto payment sheet'], ['payees', 'Payees'], ['audit', 'Audit']],
     ceo: [['appr', 'Approvals', n.ceo], ['dash', 'Dashboard']],
     partner: [['verify', 'Verify batches', n.partner], ['dash', 'Dashboard']]
   };
@@ -278,7 +279,8 @@ function renderShell() {
 }
 async function renderMain() {
   const m = $('#main'); if (!m) return;
-  const V = { dash: vDash, reqs: vReqs, appr: vAppr, batches: vBatches, inflow: vInflow, payees: vPayees, audit: vAudit, admin: vAdmin, verify: vVerify };
+  const V = { dash: vDash, reqs: vReqs, appr: vAppr, batches: vBatches, inflow: vInflow, payees: vPayees, audit: vAudit, admin: vAdmin, verify: vVerify, auto: vAuto };
+  if (S.tab === 'auto' && !A().loaded && !A().loading) { setTimeout(autoLoad, 0); }
   if (S.tab === 'audit' && !S.audit.length) { await guard(async () => { S.audit = await qry(sb.from('pay_audit').select('*').order('at', { ascending: false }).limit(500)); }); }
   m.innerHTML = (V[S.tab] || vDash)();
   if (S.tab === 'reqs' && S.ui.gridOpen) gUpdate();
@@ -356,7 +358,7 @@ function vReqs() {
   const rows = L.slice(0, 400).map(r => {
     const gate = r.status === 'draft' ? (num(r.net_amount) > num((posOf(r.project_id) || {}).headroom) - pendingNet(r.project_id, r.id) ? '<span class="badge b-dev">Deviation</span>' : '<span class="badge b-green">In inflow</span>') : (r.is_deviation ? '<span class="badge b-dev">Deviation</span>' : '');
     return `<tr>
-      <td>${r.status === 'draft' && isOwner() ? `<input type="checkbox" data-act="selreq" data-id="${r.id}" ${f.sel.has(r.id) ? 'checked' : ''}>` : ''}</td>
+      <td>${r.status === 'draft' && canSubmit() ? `<input type="checkbox" data-act="selreq" data-id="${r.id}" ${f.sel.has(r.id) ? 'checked' : ''}>` : ''}</td>
       <td class="mono"><a href="#" data-act="detail" data-id="${r.id}">${esc(r.req_no)}</a></td>
       <td>${esc(r.project_name)}</td><td><b>${esc(r.payee_name)}</b><div class="mut" style="font-size:12px">${esc(CATS[r.category] || r.category)}${r.bill_ref ? ' · ' + esc(r.bill_ref) : ''}</div></td>
       <td class="r amt">${inr(r.gross_amount)}</td><td class="r amt">${num(r.tds_amount) ? inr(r.tds_amount) : '—'}</td><td class="r amt"><b>${inr(r.net_amount)}</b>${r.approved_amount && num(r.approved_amount) !== num(r.net_amount) ? `<div class="bad" style="font-size:11px">approved ${inr(r.approved_amount)}</div>` : ''}</td>
@@ -365,23 +367,24 @@ function vReqs() {
       <td style="white-space:nowrap">${r.status === 'draft' ? `<button class="btn s" data-act="editreq" data-id="${r.id}">Edit</button> <button class="btn s" data-act="delreq" data-id="${r.id}">Delete</button>` : ''}${isOwner() && ['submitted', 'approved'].includes(r.status) ? `<button class="btn s" data-act="cancelreq" data-id="${r.id}">Cancel</button>` : ''}</td></tr>`;
   }).join('');
   return `<div class="row" style="margin-bottom:12px"><h2>Payment requests</h2><span class="sp"></span>
-      ${isOwner() ? `<button class="btn a" data-act="submitsel" ${f.sel.size ? '' : 'disabled'}>Submit ${f.sel.size || ''} to CEO</button>` : ''}
+      ${canSubmit() ? `<button class="btn a" data-act="submitsel" ${f.sel.size ? '' : 'disabled'}>Submit ${f.sel.size || ''} to CEO</button>` : ''}
       ${canRaise() ? `<button class="btn" data-act="xreqs" ${drafts.length ? '' : 'disabled'} title="Excel file of the draft requests, ready to mail to the CEO">⬇ Export ${f.sel.size ? f.sel.size + ' ticked' : 'drafts'} to Excel</button>` : ''}
+      ${canRaise() ? `<label class="btn" title="Upload an Excel / CSV file of payments — rows load into the grid for checking before saving">⬆ Upload Excel <input type="file" accept=".xlsx,.xls,.csv" data-act="gridxlsx" style="display:none"></label>` : ''}
       <button class="btn ${S.ui.gridOpen ? 'a' : ''}" data-act="gridtoggle">${S.ui.gridOpen ? 'Close grid' : '▦ Excel-style entry'}</button>
       <button class="btn p" data-act="newreq">+ New request</button></div>
-    ${isOwner() ? '<div class="note blue">Accounts raises drafts; you review and submit them to the CEO. Tick drafts and press <b>Submit to CEO</b>.</div>' : '<div class="note blue">Raise requests here. Jonathan reviews and submits them to the CEO — you do not need to e-mail payment sheets any more.</div>'}
+    ${canSubmit() ? '<div class="note blue">Raise requests, then tick the drafts and press <b>Submit to CEO</b>. Each one is checked against the client inflow when it is submitted.</div>' : ''}
     ${S.ui.gridOpen ? vGrid() : ''}
     <div class="card"><div class="row" style="margin-bottom:10px"><div class="chips">${sts.map(s => `<button class="chip ${f.status === s ? 'on' : ''}" data-act="fstatus" data-s="${s}">${s === 'all' ? 'All' : STATUS_LABEL[s]}</button>`).join('')}</div><span class="sp"></span>
       <select id="f-project" style="width:auto" data-act="fproject"><option value="">All projects</option>${S.projects.map(p => `<option value="${p.id}" ${f.project === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
       <input id="f-q" style="width:200px" placeholder="Search payee / ref / bill" value="${esc(f.q)}" data-live="fq"></div>
-    <div class="tw"><table><thead><tr><th>${isOwner() && drafts.length ? `<input type="checkbox" data-act="selalldraft">` : ''}</th><th>Ref</th><th>Project</th><th>Payee</th><th class="r">Gross</th><th class="r">TDS</th><th class="r">Net</th><th>Gate</th><th>Status</th><th></th></tr></thead>
+    <div class="tw"><table><thead><tr><th>${canSubmit() && drafts.length ? `<input type="checkbox" data-act="selalldraft">` : ''}</th><th>Ref</th><th>Project</th><th>Payee</th><th class="r">Gross</th><th class="r">TDS</th><th class="r">Net</th><th>Gate</th><th>Status</th><th></th></tr></thead>
     <tbody>${rows || '<tr><td colspan="10" class="empty">No requests match.</td></tr>'}</tbody></table></div>
     ${L.length > 400 ? `<p class="mut">Showing first 400 of ${L.length}. Narrow the filter.</p>` : ''}</div>`;
 }
 
 /* ---------- Excel-style quick entry ---------- */
 const GCOLS = ['p', 'y', 'c', 'bill', 'g', 't', 'd', 'pr'];
-const gBlank = () => ({ p: '', y: '', c: 'labour', bill: '', g: '', t: '', d: '', pr: 'normal', dr: 'client_inflow_delayed' });
+const gBlank = () => ({ p: '', y: '', c: 'labour', bill: '', g: '', t: '', d: '', pr: 'normal', dr: 'client_inflow_delayed', ds: '' });
 function gRows() { if (!S.ui.grid) S.ui.grid = Array.from({ length: 8 }, gBlank); return S.ui.grid; }
 function gPayeeMap() {
   const names = {}, labels = {};
@@ -430,7 +433,7 @@ function gBodyHtml() {
 }
 function vGrid() {
   return `<div class="card" style="margin-bottom:14px"><div class="row" style="margin-bottom:8px"><h3 style="margin:0">Excel-style entry</h3><span class="sp"></span>
-    <button class="btn s" data-act="gridadd">+ 5 rows</button><button class="btn s" data-act="gridclear">Clear</button><button class="btn p" data-act="gridsave">Save all as drafts</button></div>
+    <label class="btn s">⬆ Upload Excel <input type="file" accept=".xlsx,.xls,.csv" data-act="gridxlsx" style="display:none"></label><button class="btn s" data-act="gridtemplate">⬇ Template</button><button class="btn s" data-act="gridadd">+ 5 rows</button><button class="btn s" data-act="gridclear">Clear</button><button class="btn p" data-act="gridsave">Save all as drafts</button></div>
     <p class="mut" style="font-size:12.5px;margin:0 0 8px">Type row by row, or <b>copy rows from Excel and paste into any cell</b> — columns in this order: Project, Payee, Category, Bill ref (Advance / Against RA), Gross, TDS, Due date, Priority. Each row shows an inflow check. Deviation rows need a reason and a fund-from account. Rows are saved as drafts; you then submit them to the CEO.</p>
     <div class="tw"><table class="gtbl"><thead><tr><th>#</th><th>Project</th><th>Payee</th><th>Category</th><th>Bill ref</th><th class="r">Gross ₹</th><th class="r">TDS ₹</th><th class="r">Net ₹</th><th>Due</th><th>Priority</th><th>Check</th><th>Deviation reason</th><th></th></tr></thead>
     <tbody id="grid-body">${gBodyHtml()}</tbody></table></div>
@@ -671,7 +674,7 @@ function vAppr() {
       }).join('');
   }).join('');
   return `<div class="row" style="margin-bottom:10px"><h2>${isCeo ? 'Awaiting your approval' : 'CEO approval queue'}</h2><span class="sp"></span>
-    ${isOwner() && Q.length ? `<button class="btn a" data-act="wa-ceo">Remind CEO on WhatsApp</button>` : ''}
+    ${canSubmit() && Q.length ? `<button class="btn a" data-act="wa-ceo">Remind CEO on WhatsApp</button>` : ''}
     ${isCeo && Q.length ? `<button class="btn g" data-act="cbatch" data-m="sel" ${selQ.length ? '' : 'disabled'}>Approve selected (${selQ.length} · ${inr0(sum(selQ, amtOf))})</button><button class="btn p" data-act="cbatch" data-m="all">Approve all (${Q.length} · ${inr0(sum(Q, amtOf))})</button>` : ''}</div>
     ${Q.length ? `<div class="note ${devN.length ? 'red' : 'blue'}">${Q.length} payment${Q.length > 1 ? 's' : ''} · ${inr0(sum(Q, x => x.r.net_amount))}${devN.length ? ` · <b>${devN.length} deviation${devN.length > 1 ? 's' : ''}</b> (${inr0(sum(devN, x => x.shortfall))} above client inflow, shaded red)` : ' · all within client inflow'}. Ordered urgent-first, then by due date; headroom is consumed in that order.${isCeo ? ' Tick rows and press <b>Approve selected</b>, or edit the <b>Approve ₹</b> box for a part payment. Approving a red deviation line also approves the deviation (funded from OD) — no extra pop-up.' : ''}</div>` : ''}
     ${Q.length ? `<div class="card" style="padding:6px"><div class="tw"><table class="ctbl"><thead><tr>${isCeo ? `<th><input type="checkbox" data-act="cselall" ${Q.length && selQ.length === Q.length ? 'checked' : ''}></th>` : ''}<th>Ref</th><th>Payee</th><th>Due</th><th class="r">Gross</th><th class="r">TDS</th><th class="r">Net</th>${isCeo ? '<th class="r">Approve ₹</th>' : ''}<th>Inflow check</th>${isCeo ? '<th></th>' : ''}</tr></thead><tbody>${body}</tbody>
@@ -857,6 +860,94 @@ function vInflow() {
     ${S.openings.map(o => `<tr><td>${fdate(o.as_of)}</td><td>${esc((proj.find(p => p.id === o.project_id) || {}).name || '')}</td><td class="r amt">${inr(o.opening_net)}</td><td><span class="badge b-open">Opening</span> ${esc(o.note || '')}</td></tr>`).join('')}
     ${S.adjustments.map(a => `<tr><td>${fdate(a.adj_date)}</td><td>${esc((proj.find(p => p.id === a.project_id) || {}).name || '')}</td><td class="r amt">${inr(a.amount)}</td><td>${esc(a.reason)}</td></tr>`).join('')}
     ${!S.openings.length && !S.adjustments.length ? '<tr><td colspan="4" class="empty">None yet.</td></tr>' : ''}</tbody></table></div></div></div>`;
+}
+
+/* ---------- AUTO PAYMENT SHEET: weekly food advance from the EAGLES DLR ---------- */
+const AUTO_RATE = 1200;   // ₹ per person, per week
+const addDays = (iso, n) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+function A() {
+  if (!S.ui.auto) { const to = addDays(todayISO(), -1); S.ui.auto = { from: addDays(to, -6), to, rate: AUTO_RATE, onlySub: true, raw: [], alias: {}, loaded: false, loading: false, err: '', sel: new Set(), amt: {}, pov: {} }; }
+  return S.ui.auto;
+}
+async function autoLoad() {
+  const a = A(); if (a.loading) return; a.loading = true; a.err = ''; renderMain();
+  try {
+    const [res, al] = await Promise.all([sb.functions.invoke('dlr-feed', { body: { from: a.from, to: a.to } }), qry(sb.from('pay_dlr_alias').select('*'))]);
+    if (res.error) { let m = res.error.message; try { const j = await res.error.context.json(); m = j.error || m; } catch (e) {} throw new Error(m); }
+    if (res.data && res.data.error) throw new Error(res.data.error);
+    a.raw = (res.data && res.data.rows) || []; a.alias = Object.fromEntries(al.map(x => [x.dlr_name, x.payee_id])); a.sel = new Set(); a.amt = {};
+  } catch (e) { a.err = cleanErr(e); a.raw = []; }
+  a.loaded = true; a.loading = false; renderMain();
+}
+function autoProject(name) {
+  const n = (name || '').trim().toLowerCase(); if (!n) return null;
+  return S.projects.find(p => p.name.toLowerCase() === n) || S.projects.find(p => p.name.toLowerCase().includes(n) || n.includes(p.name.toLowerCase())) || null;
+}
+const nameWords = s => String(s || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+function autoPayeeFor(r, a) {
+  if (r.camels_id) { const p = S.payees.find(x => x.subcontractor_id === r.camels_id && x.is_active); if (p) return p; }
+  const k = (r.subcontractor || '').trim().toLowerCase();
+  if (a.alias[k]) { const p = payeeOf(a.alias[k]); if (p && p.is_active) return p; }
+  if (k.length >= 3) { const hit = pickPayees().filter(p => nameWords(p.name).includes(k)); if (hit.length === 1) return hit[0]; }
+  return null;
+}
+function autoRows() {
+  const a = A(), groups = new Map(); let skipped = 0;
+  a.raw.forEach(r => {
+    if (a.onlySub && !r.submitted) { skipped++; return; }
+    const py = autoPayeeFor(r, a), nm = (r.subcontractor || '').trim();
+    const key = r.project + '|' + (py ? py.id : 'n:' + nm.toLowerCase());
+    let g = groups.get(key); if (!g) { g = { key, eproj: r.project, names: new Set(), py, days: new Map() }; groups.set(key, g); }
+    if (nm) g.names.add(nm); g.days.set(r.date, (g.days.get(r.date) || 0) + (Number(r.headcount) || 0));
+  });
+  const period = `${a.from} to ${a.to}`;
+  const rows = [...groups.values()].map(g => {
+    const worked = [...g.days.values()].filter(v => v > 0), n = worked.length, man = worked.reduce((x, y) => x + y, 0);
+    const avg = n ? man / n : 0, people = Math.round(avg);
+    const proj = S.projects.find(p => p.id === a.pov[g.eproj.toLowerCase()]) || autoProject(g.eproj);
+    const amount = a.amt[g.key] != null ? num(a.amt[g.key]) : people * num(a.rate);
+    const dup = g.py && proj ? S.reqs.find(q => q.payee_id === g.py.id && q.project_id === proj.id && String(q.description || '').startsWith('Food advance ' + period) && !['cancelled', 'rejected'].includes(q.status)) : null;
+    let st = 'ok', msg = 'Ready';
+    if (!g.py) { st = 'payee'; msg = 'Pick subcontractor'; } else if (!proj) { st = 'proj'; msg = 'Pick project'; }
+    else if (!n) { st = 'zero'; msg = 'No people logged'; } else if (!(amount > 0)) { st = 'zero'; msg = 'Check amount'; } else if (dup) { st = 'dup'; msg = 'Already requested · ' + dup.req_no; }
+    return { ...g, n, man, avg, people, proj, amount, st, msg, dup, daysTxt: [...g.days.entries()].sort().map(([d, v]) => d.slice(5) + ': ' + v).join('  ·  '), names: [...g.names] };
+  }).sort((x, y) => (x.eproj + (x.py ? x.py.name : '~' + x.names[0])).localeCompare(y.eproj + (y.py ? y.py.name : '~' + y.names[0])));
+  return { rows, skipped, period };
+}
+function vAuto() {
+  const a = A(); const { rows, skipped, period } = autoRows();
+  const starred = pickPayees().filter(p => p.subcontractor_id).sort((x, y) => x.name.localeCompare(y.name));
+  const body = rows.map(r => {
+    const ready = r.st === 'ok';
+    const payeeCell = r.py ? `<b>${esc(r.py.name)}</b>${r.names.length && !r.names.some(n => n.toLowerCase() === r.py.name.toLowerCase()) ? `<div class="mut" style="font-size:11.5px">DLR: ${esc(r.names.join(', '))}</div>` : ''}`
+      : `<div class="mut" style="font-size:11.5px">DLR: ${esc(r.names.join(', '))}</div><select data-act="autopayee" data-key="${esc(r.key)}"><option value="">Pick subcontractor…</option>${starred.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select>`;
+    const projCell = r.proj ? esc(r.proj.name) : `<div class="mut" style="font-size:11.5px">EAGLES: ${esc(r.eproj)}</div><select data-act="autoproj" data-ep="${esc(r.eproj.toLowerCase())}"><option value="">Pick project…</option>${S.projects.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select>`;
+    return `<tr>
+      <td><input type="checkbox" data-act="autosel" data-key="${esc(r.key)}" ${a.sel.has(r.key) && ready ? 'checked' : ''} ${ready ? '' : 'disabled'}></td>
+      <td>${projCell}</td><td>${payeeCell}</td>
+      <td class="r" title="${esc(r.daysTxt)}">${r.n}</td><td class="r amt" title="${esc(r.daysTxt)}">${r.n ? r.avg.toFixed(1) : '—'}</td><td class="r">${r.man}</td><td class="r">${r.people}</td>
+      <td class="r"><input data-live="autoamt" data-key="${esc(r.key)}" type="number" step="1" min="0" value="${r.amount || ''}" style="width:110px;text-align:right"></td>
+      <td>${ready ? '<span class="badge b-green">Ready</span>' : `<span class="${r.st === 'dup' ? 'mut' : 'bad'}" style="font-size:12px">${esc(r.msg)}</span>`}</td></tr>`;
+  }).join('') || `<tr><td colspan="9" class="empty">${a.loading ? 'Reading the DLR from EAGLES…' : a.err ? '' : 'No DLR entries found for these dates.'}</td></tr>`;
+  const tot = rows.filter(r => a.sel.has(r.key) && r.st === 'ok').reduce((x, r) => x + r.amount, 0);
+  const nsel = rows.filter(r => a.sel.has(r.key) && r.st === 'ok').length;
+  return `<div class="row" style="margin-bottom:10px"><h2>Auto payment sheet</h2><span class="sp"></span>
+      <button class="btn" data-act="autoxlsx" ${rows.length ? '' : 'disabled'}>⬇ Excel</button>
+      <button class="btn p" data-act="autotogrid" ${nsel ? '' : 'disabled'}>Add ${nsel || ''} ticked to requests</button></div>
+    <div class="card" style="margin-bottom:12px"><div class="row" style="gap:12px;align-items:flex-end;flex-wrap:wrap">
+      <div class="field" style="margin:0"><label>DLR from</label><input type="date" data-act="autoparam" data-p="from" value="${a.from}"></div>
+      <div class="field" style="margin:0"><label>to</label><input type="date" data-act="autoparam" data-p="to" value="${a.to}"></div>
+      <div class="field" style="margin:0"><label>Food advance ₹ per person</label><input type="number" min="0" step="50" data-act="autoparam" data-p="rate" value="${a.rate}" style="width:120px"></div>
+      <label style="display:flex;gap:6px;align-items:center;margin-bottom:8px"><input type="checkbox" data-act="autoparam" data-p="onlySub" ${a.onlySub ? 'checked' : ''}> Submitted DLRs only</label>
+      <button class="btn a" data-act="autoreload" ${a.loading ? 'disabled' : ''}>${a.loading ? 'Reading…' : '↻ Read DLR from EAGLES'}</button></div>
+      <p class="mut" style="font-size:12.5px;margin:10px 0 0">Reads the site DLR live from EAGLES. For each subcontractor: <b>average people per day</b> = total people logged ÷ days they had people logged (${esc(fdate(a.from))} – ${esc(fdate(a.to))}). <b>Food advance</b> = average rounded to a whole person × ₹ per person — you can overtype any amount. Hover a row to see the day-by-day counts.${skipped ? ` <b>${skipped}</b> unsubmitted DLR line${skipped > 1 ? 's' : ''} left out.` : ''}</p></div>
+    ${a.err ? `<div class="note red"><b>Could not read the DLR.</b> ${esc(a.err)}</div>` : ''}
+    <div class="card"><div class="tw"><table><thead><tr><th></th><th>Project</th><th>Subcontractor</th><th class="r">Days</th><th class="r">Avg people / day</th><th class="r">Man-days</th><th class="r">People</th><th class="r">Food advance ₹</th><th>Status</th></tr></thead><tbody>${body}</tbody></table></div>
+    <div class="row" style="margin-top:8px"><span class="mut" id="auto-total">${nsel ? `${nsel} ticked · total food advance ${inr0(tot)}` : 'Tick the rows you want, then “Add ticked to requests” — they open in the entry grid as Advance drafts for the usual inflow check.'}</span></div></div>`;
+}
+function autoTotals() {
+  const a = A(), { rows } = autoRows(); const pick = rows.filter(r => a.sel.has(r.key) && r.st === 'ok');
+  const t = $('#auto-total'); if (t) t.textContent = pick.length ? `${pick.length} ticked · total food advance ${inr0(pick.reduce((x, r) => x + r.amount, 0))}` : 'Tick the rows you want, then “Add ticked to requests” — they open in the entry grid as Advance drafts for the usual inflow check.';
 }
 
 /* ---------- payees ---------- */
@@ -1215,6 +1306,72 @@ const ACT = {
   },
   gridtoggle() { S.ui.gridOpen = !S.ui.gridOpen; renderMain(); if (S.ui.gridOpen) gUpdate(); },
   gridadd() { const g = gRows(); for (let i = 0; i < 5; i++) g.push(gBlank()); $('#grid-body').innerHTML = gBodyHtml(); gUpdate(); },
+  autoreload() { A().loaded = false; autoLoad(); },
+  autoparam(el) {
+    const a = A(), p = el.dataset.p;
+    if (p === 'onlySub') a.sel = new Set();
+    if (p === 'rate') { a.rate = num(el.value); a.amt = {}; renderMain(); return; }
+    if (p === 'onlySub') { a.onlySub = el.checked; renderMain(); return; }
+    if (!el.value) return; a[p] = el.value;
+    if (a.from > a.to) { toast('From date is after To date', true); return; }
+    autoLoad();
+  },
+  autosel(el) { const a = A(); el.checked ? a.sel.add(el.dataset.key) : a.sel.delete(el.dataset.key); autoTotals(); const b = document.querySelector('[data-act="autotogrid"]'); if (b) { const n = autoRows().rows.filter(r => a.sel.has(r.key) && r.st === 'ok').length; b.disabled = !n; b.textContent = `Add ${n || ''} ticked to requests`; } },
+  autoproj(el) { if (el.value) { A().pov[el.dataset.ep] = el.value; renderMain(); } },
+  async autopayee(el) {
+    if (!el.value) return; const a = A(); const row = autoRows().rows.find(r => r.key === el.dataset.key); if (!row) return;
+    await guard(async () => {
+      const recs = row.names.map(n => ({ dlr_name: n.toLowerCase(), payee_id: el.value }));
+      if (recs.length) await qry(sb.from('pay_dlr_alias').upsert(recs, { onConflict: 'dlr_name' }));
+      recs.forEach(x => { a.alias[x.dlr_name] = x.payee_id; });
+      toast(`Remembered: ${row.names.join(', ')} → ${payeeOf(el.value).name}`); renderMain();
+    });
+  },
+  autotogrid() {
+    const a = A(), { rows } = autoRows(), pick = rows.filter(r => a.sel.has(r.key) && r.st === 'ok'); if (!pick.length) return toast('Tick at least one ready row', true);
+    const labels = gPayeeMap(), g = gRows(), fmt = d => fdate(d).replace(/ \d{4}$/, '');
+    pick.forEach(r => {
+      const label = Object.keys(labels).find(k => labels[k] === r.py.id) || r.py.name;
+      const row = { ...gBlank(), p: r.proj.id, y: label, c: 'labour', bill: 'Advance', g: String(Math.round(r.amount)), t: '0',
+        ds: `Food advance ${a.from} to ${a.to} · avg ${r.people} people × ${inr0(a.rate)} (DLR ${fmt(a.from)} – ${fmt(a.to)})` };
+      const free = g.findIndex(x => !x.p && !x.y && !x.g && !x.bill); if (free >= 0) g[free] = row; else g.push(row);
+    });
+    a.sel = new Set(); S.ui.gridOpen = true; S.tab = 'reqs'; renderShell();
+    toast(`${pick.length} food-advance row${pick.length > 1 ? 's' : ''} added to the grid — check, then Save all as drafts`);
+  },
+  autoxlsx() {
+    const a = A(), { rows } = autoRows();
+    const out = [['Project', 'Subcontractor', 'DLR name(s)', 'Days with people', 'Avg people / day', 'Man-days', 'People (rounded)', 'Rate per person ₹', 'Food advance ₹', 'Period', 'Status'],
+      ...rows.map(r => [r.proj ? r.proj.name : r.eproj, r.py ? r.py.name : '', r.names.join(', '), r.n, +r.avg.toFixed(2), r.man, r.people, num(a.rate), Math.round(r.amount), `${a.from} to ${a.to}`, r.msg])];
+    out.push([], ['', '', '', '', '', '', '', 'Total', Math.round(rows.filter(r => r.st === 'ok').reduce((x, r) => x + r.amount, 0))]);
+    const ws = XLSX.utils.aoa_to_sheet(out); ws['!cols'] = [22, 28, 26, 10, 12, 10, 12, 14, 14, 24, 28].map(w => ({ wch: w }));
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Food advance'); XLSX.writeFile(wb, `CCI_auto_payment_sheet_${a.from}_to_${a.to}.xlsx`);
+  },
+  gridtemplate() {
+    const hdr = ['Project', 'Payee', 'Category', 'Bill ref (Advance / Against RA)', 'Gross', 'TDS', 'Due date (DD/MM/YYYY)', 'Priority (Normal / Urgent)'];
+    const ex = [[(S.projects[0] || {}).name || 'Project name', ((pickPayees()[0] || {}).name) || 'Payee name', 'Labour', 'Advance', 50000, 500, '', 'Normal']];
+    const ws = XLSX.utils.aoa_to_sheet([hdr, ...ex]); ws['!cols'] = [24, 30, 14, 30, 12, 10, 22, 24].map(w => ({ wch: w }));
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Payments'); XLSX.writeFile(wb, 'CCI_payment_requests_template.xlsx');
+  },
+  async gridxlsx(el) {
+    const f = el.files && el.files[0]; el.value = ''; if (!f) return;
+    try {
+      const buf = await f.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      let rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, dateNF: 'dd/mm/yyyy', defval: '' });
+      rows = rows.filter(r => r.some(c => String(c).trim() !== ''));
+      if (rows.length && /project|payee|name/i.test(String(rows[0][0]) + ' ' + String(rows[0][1])) && !(+String(rows[0][4]).replace(/[₹,\s]/g, ''))) rows.shift();   // skip a header row
+      if (!rows.length) return toast('No rows found in that file', true);
+      S.ui.gridOpen = true; const g = gRows();
+      let start = g.findIndex(r => !r.y && !r.g && !r.bill); if (start < 0) start = g.length;
+      while (g.length < start + rows.length) g.push(gBlank());
+      S.tab = 'reqs'; renderShell();
+      gPaste({ dataset: { r: String(start), c: 'p' } }, rows.map(r => r.slice(0, 8).map(c => String(c).replace(/[\t\r\n]+/g, ' ')).join('\t')).join('\n'));
+      const bad = gRows().slice(start, start + rows.length).filter(r => !r.p || !gPayeeId(r.y, gPayeeMap())).length;
+      toast(`${rows.length} row(s) loaded from ${f.name}` + (bad ? ` — ${bad} need a Project or Payee fixed (payee must be a starred subcontractor)` : ' — check, then Save all as drafts'), bad > 0);
+    } catch (e) { toast('Could not read that file: ' + (e.message || e), true); }
+  },
   gridclear() { if (!confirm('Clear all rows in the grid?')) return; S.ui.grid = null; renderMain(); gUpdate(); },
   griddel(el) { const g = gRows(); g.splice(+el.dataset.r, 1); if (!g.length) g.push(gBlank()); $('#grid-body').innerHTML = gBodyHtml(); gUpdate(); },
   async gridsave() {
@@ -1225,7 +1382,7 @@ const ACT = {
       if (o.dev && !r.dr) { problems.push(`Row ${i + 1}: deviation needs a reason`); return; }
       const py = payeeOf(o.payee);
       payload.push({ project_id: r.p, payee_id: py.id, payee_name: py.name, category: r.c, bill_ref: r.bill.trim() || null, due_date: r.d || null, priority: r.pr,
-        gross_amount: num(r.g), tds_amount: num(r.t), other_deduction: 0, dev_reason_code: o.dev ? r.dr : null });
+        gross_amount: num(r.g), tds_amount: num(r.t), other_deduction: 0, description: r.ds || null, dev_reason_code: o.dev ? r.dr : null });
       idx.push(i);
     });
     if (problems.length) { alert('Please fix these rows first (nothing was saved):\n\n' + problems.join('\n')); return; }
@@ -1287,18 +1444,19 @@ const ACT = {
 /* ---------- event wiring ---------- */
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]'); if (!el) return;
-  if (el.tagName === 'INPUT' && (el.type === 'radio' || el.type === 'file')) return;
+  if (el.tagName === 'INPUT' && (el.type === 'radio' || el.type === 'file' || el.type === 'date' || el.type === 'number')) return;
   if (el.tagName === 'SELECT' || (el.tagName === 'INPUT' && el.type === 'checkbox' && el.dataset.act !== 'selreq')) return;
   if (el.dataset.act === 'selreq') return;
   const fn = ACT[el.dataset.act]; if (fn) fn(el, e);
 });
 document.addEventListener('change', e => {
   const el = e.target.closest('[data-act]'); if (!el) return; const a = el.dataset.act;
-  if (['selreq', 'setplan', 'csel', 'cselall', 'selalldraft', 'selbatch', 'selallbatch', 'selrm', 'devok', 'pdec', 'fproject', 'stmt'].includes(a) && ACT[a]) ACT[a](el, e);
+  if (['selreq', 'setplan', 'csel', 'cselall', 'selalldraft', 'selbatch', 'selallbatch', 'selrm', 'devok', 'pdec', 'fproject', 'stmt', 'gridxlsx', 'autoparam', 'autosel', 'autoproj', 'autopayee'].includes(a) && ACT[a]) ACT[a](el, e);
 });
 document.addEventListener('input', e => {
   const el = e.target; const l = el.dataset && el.dataset.live; if (!l) return; const id = el.dataset.id;
   if (l === 'g') { gRows()[+el.dataset.r][el.dataset.c] = el.value; gUpdate(); }
+  else if (l === 'autoamt') { A().amt[el.dataset.key] = el.value === '' ? 0 : el.value; autoTotals(); }
   else if (l === 'gate') updateGate();
   else if (l === 'payee') onPayeeChange();
   else if (l === 'billtype') onBillType();
