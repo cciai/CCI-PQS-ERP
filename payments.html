@@ -165,7 +165,9 @@ const S = {
   ui: { status: 'all', project: '', q: '', sel: new Set(), bsel: new Set(), csel: new Set(), camt: {}, bpay: {}, panel: {}, openBatch: null, pdec: {}, utr: {}, auditQ: '', bankPick: '', payDate: '', payeeQ: '' }
 };
 const realRole = () => S.me && S.me.role;
-const testOn = () => realRole() === 'owner' && S.settings && S.settings.owner_test_mode === 'on';
+const TEST_MODE_EMAIL = 'jonathan@cameoconstructions.com';   // test mode is for Jonathan's login only
+const canTest = () => realRole() === 'owner' && S.me && (S.me.email || '').toLowerCase() === TEST_MODE_EMAIL;
+const testOn = () => canTest() && S.settings && S.settings.owner_test_mode === 'on';
 const role = () => (testOn() && S.view) ? S.view : (S.me && S.me.role);
 const isOwner = () => role() === 'owner';
 const canRaise = () => role() === 'owner' || role() === 'accounts';
@@ -257,8 +259,8 @@ function tabsFor() {
   const T = {
     owner: [['dash', 'Dashboard'], ['reqs', 'Requests'], ['appr', 'CEO queue', n.ceo], ['batches', 'Batches', n.batch], ['inflow', 'Inflows & limits'], ['payees', 'Payees'], ['audit', 'Audit'], ['admin', 'Admin']],
     accounts: [['dash', 'Dashboard'], ['reqs', 'Requests'], ['batches', 'Batches', n.batch], ['inflow', 'Inflows'], ['payees', 'Payees'], ['audit', 'Audit']],
-    ceo: [['appr', 'Approvals', n.ceo], ['dash', 'Dashboard'], ['audit', 'Audit']],
-    partner: [['verify', 'Verify batches', n.partner], ['dash', 'Dashboard'], ['audit', 'Audit']]
+    ceo: [['appr', 'Approvals', n.ceo], ['dash', 'Dashboard']],
+    partner: [['verify', 'Verify batches', n.partner], ['dash', 'Dashboard']]
   };
   return T[role()] || [];
 }
@@ -906,10 +908,10 @@ function vAdmin() {
     <div class="grid3"><div class="field"><label>Login e-mail</label><input id="gr-email" type="email"></div><div class="field"><label>Full name</label><input id="gr-name"></div>
       <div class="field"><label>Role</label><select id="gr-role"><option value="ceo">CEO — approves every payment</option><option value="partner">JH — verifies batches</option><option value="accounts">Accounts — raises requests, batches, exports</option></select></div></div>
     <button class="btn p" data-act="grant">Grant access</button>
-    <p class="mut" style="font-size:12px;margin:10px 0 0">CEO and JH users see only payment amounts, payees' names, approvals and the audit trail — not CAMELS bills, subcontractor bank details or bank statements.</p></div>
+    <p class="mut" style="font-size:12px;margin:10px 0 0">CEO and JH users see only payment amounts, payees' names and approvals — not the audit trail, and not CAMELS bills, subcontractor bank details or bank statements.</p></div>
   <div class="card ${testOn() ? 'dev' : ''}"><h3 style="margin-bottom:6px">Test mode</h3>
     <p class="mut" style="margin:0 0 8px;font-size:12.5px">Lets the owner login try every role — Accounts, CEO and JH — to test the whole flow yourself. While on, the owner can approve their own requests, so use it with test data only and switch it off before real use. Switching on and off is recorded in the Audit.</p>
-    ${testOn() ? '<button class="btn d" data-act="testmode" data-on="0">Switch test mode OFF</button>' : '<button class="btn a" data-act="testmode" data-on="1">Switch test mode ON</button>'}</div>
+    ${!canTest() ? '' : testOn() ? '<button class="btn d" data-act="testmode" data-on="0">Switch test mode OFF</button>' : '<button class="btn a" data-act="testmode" data-on="1">Switch test mode ON</button>'}</div>
   <div class="card"><h3 style="margin-bottom:8px">Bank accounts</h3><div class="tw"><table><thead><tr><th>Code</th><th>Label</th><th>Type</th><th>OD limit (₹)</th><th>Tally ledger name</th><th>Active</th><th></th></tr></thead><tbody>
     ${S.banks.map(b => `<tr><td class="mono">${esc(b.code)}</td><td><input id="bk-l-${b.id}" value="${esc(b.label)}"></td><td><select id="bk-k-${b.id}"><option value="current" ${b.account_kind === 'current' ? 'selected' : ''}>Current</option><option value="od" ${b.account_kind === 'od' ? 'selected' : ''}>OD / CC</option></select></td>
       <td><input id="bk-o-${b.id}" type="number" value="${esc(b.od_limit ?? '')}"></td><td><input id="bk-t-${b.id}" value="${esc(b.tally_ledger || '')}"></td><td><select id="bk-a-${b.id}"><option value="1">Yes</option><option value="0" ${b.is_active ? '' : 'selected'}>No</option></select></td>
@@ -1064,13 +1066,14 @@ const ACT = {
   async detail(el, e) {
     e.preventDefault(); const r = S.reqs.find(x => x.id === el.dataset.id); if (!r) return;
     await guard(async () => {
-      const au = await qry(sb.from('pay_audit').select('*').eq('entity', 'request').eq('entity_id', r.id).order('at'));
+      const canAudit = ['owner', 'accounts'].includes(role());
+      const au = canAudit ? await qry(sb.from('pay_audit').select('*').eq('entity', 'request').eq('entity_id', r.id).order('at')) : [];
       openModal(`<div class="ovl" data-act="ovl"><div class="modal"><div class="row"><h2>${esc(r.req_no)}</h2>${badge(r.status)}<span class="sp"></span><button class="btn s" data-act="closemodal">Close</button></div>
         <div class="kv" style="margin:8px 0 14px"><span>Project</span><span>${esc(r.project_name)}</span><span>Payee</span><span>${esc(r.payee_name)}</span><span>Category</span><span>${esc(CATS[r.category])}</span><span>Bill ref</span><span>${esc(r.bill_ref || '—')}</span><span>Description</span><span>${esc(r.description || '—')}</span>
         <span>Gross / TDS / Net</span><span class="amt">${inr(r.gross_amount)} / ${inr(r.tds_amount)} / <b>${inr(r.net_amount)}</b></span>${r.approved_amount ? `<span>CEO approved</span><span class="amt"><b>${inr(r.approved_amount)}</b>${r.ceo_remark ? ' — ' + esc(r.ceo_remark) : ''}</span>` : ''}
         ${r.is_deviation ? `<span>Deviation</span><span class="bad">${inr(r.shortfall_at_approval ?? r.shortfall_at_submit)} above client inflow · ${esc(DEV_REASONS[r.dev_reason_code] || '')} · ${esc((bankOf(r.dev_funding_account_id) || {}).label || '')}${r.dev_note ? ' · ' + esc(r.dev_note) : ''}</span>` : ''}
         ${r.utr ? `<span>UTR</span><span class="mono">${esc(r.utr)} · ${fdate(r.paid_date)}</span>` : ''}</div>
-        <h3 style="margin-bottom:8px">History</h3><div class="tl">${au.map(a => `<div class="it"><b>${esc(a.action)}</b> <span class="mut">— ${esc(a.actor_name || 'system')}, ${fdt(a.at)}</span>${a.detail && (a.detail.ceo_remark || a.detail.partner_remark) ? `<div class="mut" style="font-size:12.5px">${esc(a.detail.ceo_remark || a.detail.partner_remark)}</div>` : ''}</div>`).join('') || '<div class="mut">No history.</div>'}</div></div></div>`);
+        ${canAudit ? `<h3 style="margin-bottom:8px">History</h3>` : ''}<div class="tl" ${canAudit ? '' : 'style="display:none"'}>${au.map(a => `<div class="it"><b>${esc(a.action)}</b> <span class="mut">— ${esc(a.actor_name || 'system')}, ${fdt(a.at)}</span>${a.detail && (a.detail.ceo_remark || a.detail.partner_remark) ? `<div class="mut" style="font-size:12.5px">${esc(a.detail.ceo_remark || a.detail.partner_remark)}</div>` : ''}</div>`).join('') || '<div class="mut">No history.</div>'}</div></div></div>`);
     });
   },
   viewas(el) { S.view = el.dataset.v; S.tab = defaultTab(); renderShell(); },
