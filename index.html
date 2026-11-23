@@ -655,6 +655,8 @@ let state = {
   billListPage: 1,
   billsCacheProjectId: null,
   dlrDate: new Date().toISOString().slice(0,10),
+  dlrSource: 'eagles',
+  dlrFeed: null,
   dlrEntries: [],
   dlrSubmissionStrip: {},
   dlrStripCacheKey: null,
@@ -3165,7 +3167,7 @@ async function submitDLRDay(project){
   } catch(err){ toast('Could not reach the server — please try again.', true); console.error(err); }
 }
 
-async function renderDLRTab(project){
+async function renderDLRManual(project){
   const tabContent = document.getElementById('tabContent');
   tabContent.innerHTML = `<div class="loading">Loading Daily Labour Report…</div>`;
   const stripPromise = (state.dlrStripCacheKey === project.id)
@@ -3218,6 +3220,119 @@ async function renderDLRTab(project){
 
   renderDLRGrid(project);
   if(canEnterDLR()) renderDLRAddRow(project);
+}
+
+/* ---------- Daily Labour: read-only feed from EAGLES ---------- */
+const EA_TRADES = [
+  { key: 'Carpenters', label: 'Carpenters' }, { key: 'Carp Helpers', label: 'Carp Helpers' },
+  { key: 'Steel fitters', label: 'Steel Fitters' }, { key: 'St helpers', label: 'St Helpers' },
+  { key: 'Masons', label: 'Masons' }, { key: 'Helpers', label: 'Helpers' }, { key: 'Foreman', label: 'Foreman' }
+];
+const eaNorm = x => String(x||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+function eaProjectMatch(eaName, project){
+  const a = eaNorm(eaName), b = eaNorm(project.name);
+  return !!a && !!b && (a === b || b.includes(a) || a.includes(b));
+}
+function isoShift(d, n){ const t = new Date(d+'T00:00:00Z'); t.setUTCDate(t.getUTCDate()+n); return t.toISOString().slice(0,10); }
+
+async function loadEaglesDLR(project, force){
+  const today = new Date().toISOString().slice(0,10);
+  let to = state.dlrDate > today ? state.dlrDate : today, from = isoShift(to,-13);
+  if(state.dlrDate < from){ from = state.dlrDate; if((Date.parse(to)-Date.parse(from))/86400000 > 60) to = isoShift(from,13); }
+  const key = from+'|'+to;
+  if(!force && state.dlrFeed && state.dlrFeed.key === key && Date.now() - state.dlrFeed.at < 60000) return state.dlrFeed;
+  const res = await sb.functions.invoke('dlr-eagles', { body: { from, to } });
+  if(res.error){ let m = res.error.message; try{ const j = await res.error.context.json(); m = j.error || m; }catch(e){} throw new Error(m); }
+  if(res.data && res.data.error) throw new Error(res.data.error);
+  state.dlrFeed = { key, from, to, at: Date.now(), rows: res.data.rows || [], days: res.data.days || [] };
+  return state.dlrFeed;
+}
+
+function eaDlrSourceToggle(project){
+  return `<div class="toolbar" style="margin-bottom:12px;">
+    <div class="seg" style="display:inline-flex;border:1px solid var(--paper-line);border-radius:8px;overflow:hidden;">
+      <button class="btn tiny ${state.dlrSource==='eagles'?'primary':''}" id="dlrSrcEagles" style="border-radius:0;border:0;">From EAGLES (site app)</button>
+      <button class="btn tiny ${state.dlrSource==='manual'?'primary':''}" id="dlrSrcManual" style="border-radius:0;border:0;">Manual entry in CAMELS</button>
+    </div></div>`;
+}
+function eaDlrWireToggle(project){
+  const a = document.getElementById('dlrSrcEagles'), m = document.getElementById('dlrSrcManual');
+  if(a) a.onclick = () => { state.dlrSource = 'eagles'; renderDLRTab(project); };
+  if(m) m.onclick = () => { state.dlrSource = 'manual'; renderDLRTab(project); };
+}
+
+async function renderDLRTab(project){
+  if(state.dlrSource === 'manual'){ await renderDLRManual(project); const tc = document.getElementById('tabContent'); if(tc){ tc.insertAdjacentHTML('afterbegin', eaDlrSourceToggle(project)); eaDlrWireToggle(project); } return; }
+  const tabContent = document.getElementById('tabContent');
+  tabContent.innerHTML = eaDlrSourceToggle(project) + `<div class="loading">Reading the Daily Labour Report from EAGLES…</div>`;
+  eaDlrWireToggle(project);
+  let feed;
+  try{ feed = await loadEaglesDLR(project, state.dlrForce); state.dlrForce = false; }
+  catch(err){
+    tabContent.innerHTML = eaDlrSourceToggle(project) + `<div class="locked-note">Could not read EAGLES: ${escapeHtml(err.message||String(err))}</div><div class="modal-actions" style="justify-content:flex-start"><button class="btn primary" id="dlrRetry">Try again</button></div>`;
+    eaDlrWireToggle(project); document.getElementById('dlrRetry').onclick = () => { state.dlrForce = true; renderDLRTab(project); }; return;
+  }
+  const rowsAll = feed.rows.filter(r => eaProjectMatch(r.project, project));
+  const daysAll = feed.days.filter(d => eaProjectMatch(d.project, project));
+  const stripDates = []; for(let d = feed.from; d <= feed.to; d = isoShift(d,1)) stripDates.push(d);
+  const daySub = new Set(daysAll.filter(d => d.submitted).map(d => d.date));
+  const hasRows = new Set(rowsAll.map(r => r.date));
+  const today = new Date().toISOString().slice(0,10);
+  const dayRows = rowsAll.filter(r => r.date === state.dlrDate);
+  const dayInfo = daysAll.find(d => d.date === state.dlrDate);
+  // group by subcontractor
+  const grp = new Map();
+  dayRows.forEach(r => {
+    const k = (r.code || '') + '|' + eaNorm(r.subcontractor);
+    const g = grp.get(k) || { name: r.subcontractor, code: r.code, camels_id: r.camels_id, t: {}, other: {} };
+    const known = EA_TRADES.find(t => t.key === r.trade);
+    if(known) g.t[r.trade] = (g.t[r.trade]||0) + r.headcount; else g.other[r.trade||'Other'] = (g.other[r.trade||'Other']||0) + r.headcount;
+    grp.set(k, g);
+  });
+  const list = [...grp.values()].sort((a,b) => (a.name||'').localeCompare(b.name||''));
+  const otherKeys = [...new Set(list.flatMap(g => Object.keys(g.other)))];
+  const cols = [...EA_TRADES.map(t => ({ key: t.key, label: t.label, other: false })), ...otherKeys.map(k => ({ key: k, label: k, other: true }))];
+  const val = (g,c) => c.other ? (g.other[c.key]||0) : (g.t[c.key]||0);
+  const tot = g => cols.reduce((s,c) => s + val(g,c), 0);
+  const colTot = cols.map(c => list.reduce((s,g) => s + val(g,c), 0));
+  const grand = colTot.reduce((s,x) => s + x, 0);
+  const subm = daySub.has(state.dlrDate);
+  const stripHtml = stripDates.map(d => {
+    const ok = daySub.has(d), has = hasRows.has(d);
+    const cls = ok ? 'ok' : (has || d <= today ? 'missing' : '');
+    const label = new Date(d+'T00:00:00').toLocaleDateString('en-IN', { weekday:'short', day:'numeric' });
+    return `<button class="dlr-strip-day ${cls} ${d===state.dlrDate?'selected':''}" data-date="${d}" title="${ok?'Submitted in EAGLES':(has?'Entries exist, not submitted':'Nothing in EAGLES')}">${ok?'✓ ':''}${label}</button>`;
+  }).join('');
+  tabContent.innerHTML = eaDlrSourceToggle(project) + `
+    <div class="dlr-strip">${stripHtml}</div>
+    ${subm
+      ? `<div class="locked-note" style="color:var(--green);border-color:rgba(63,143,99,0.35);background:rgba(63,143,99,0.08);">✓ Submitted in EAGLES${dayInfo && dayInfo.submitted_at ? ' at '+new Date(dayInfo.submitted_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}) : ''} · ${grand} people across ${list.length} subcontractor${list.length!==1?'s':''}</div>`
+      : `<div class="locked-note">${dayRows.length ? 'Entries found in EAGLES but the site has not submitted this day yet.' : 'Nothing entered in EAGLES for this date yet.'}</div>`}
+    <div class="toolbar">
+      <div class="field" style="max-width:200px; margin:0;"><input type="date" id="dlrDatePicker" value="${state.dlrDate}"></div>
+      <button class="btn tiny" id="eaRefreshBtn">↻ Refresh from EAGLES</button>
+      <button class="btn tiny" id="eaCsvBtn">CSV</button>
+      <span class="pg-status">Read-only · live from EAGLES · updated ${new Date(feed.at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</span>
+    </div>
+    <div id="eaGridWrap"></div>`;
+  eaDlrWireToggle(project);
+  const wrap = document.getElementById('eaGridWrap');
+  if(!list.length){ wrap.innerHTML = `<div class="wo-lines-empty">No labour in EAGLES for ${escapeHtml(project.name)} on this date.</div>`; }
+  else {
+    const t = document.createElement('table'); t.className = 'data-table dlr-table';
+    t.innerHTML = `<thead><tr><th>Subcontractor</th>${cols.map(c=>`<th>${escapeHtml(c.label)}</th>`).join('')}<th>Total</th></tr></thead><tbody>
+      ${list.map(g => `<tr><td>${escapeHtml(g.name||'—')} ${g.code?`<span class="u">${escapeHtml(g.code)}</span>`:''}</td>${cols.map(c=>`<td>${val(g,c)||''}</td>`).join('')}<td class="num"><strong>${tot(g)}</strong></td></tr>`).join('')}
+      <tr class="wo-doc-total-row"><td><strong>Total (${list.length})</strong></td>${colTot.map(x=>`<td class="num"><strong>${x}</strong></td>`).join('')}<td class="num"><strong>${grand}</strong></td></tr></tbody>`;
+    wrap.appendChild(t);
+  }
+  document.getElementById('dlrDatePicker').addEventListener('change', async (e) => { if(!e.target.value) return; state.dlrDate = e.target.value; await renderDLRTab(project); });
+  document.querySelectorAll('.dlr-strip-day').forEach(b => b.onclick = async () => { state.dlrDate = b.dataset.date; await renderDLRTab(project); });
+  document.getElementById('eaRefreshBtn').onclick = () => { state.dlrForce = true; renderDLRTab(project); };
+  document.getElementById('eaCsvBtn').onclick = () => {
+    if(!list.length){ toast('Nothing to export for this date.', true); return; }
+    const out = list.map(g => { const r = { 'Subcontractor': g.name||'', 'Acct Code': g.code||'' }; cols.forEach(c => r[c.label] = val(g,c)); r['Total'] = tot(g); return r; });
+    downloadCSV(`CCI DLR (EAGLES) ${project.name} ${state.dlrDate}.csv`, ['Subcontractor','Acct Code',...cols.map(c=>c.label),'Total'], out);
+  };
 }
 
 function main_dlrWireStripClicks(project){
