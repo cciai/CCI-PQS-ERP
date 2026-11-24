@@ -580,6 +580,142 @@ C. Rates mentioned are inclusive of all levies and duties, freight etc., but exc
 D. TDS shall be deducted from each RA Bill / Final Bill as per prevailing norms.
 E. Retention money as specified shall be held on every RA Bill and released after the defect liability period.
 F. Bills shall be certified by the Contractor within a week of submission, and payment released as per the agreed schedule.`;
+/* ---------- Work Order terms builder: full general conditions + clauses for every activity in the WO ---------- */
+const WO_ACTIVITY_LIB = [
+  { key: 'shuttering', title: 'SHUTTERING / FORMWORK', re: /shutter|formwork|form work|deshutter|de-shutter|centering|staging|props?\b/i, pts: [
+    ['Scope', 'Erection, alignment, levelling, plumbing, propping and bracing of formwork for columns, walls, beams, slabs, staircases, lift cores and other elements as per approved drawings; application of release agent; fixing of sleeves, cut-outs, pour-stoppers, kickers and edge protection; stripping, cleaning, stacking and shifting of formwork and accessories after the permitted stripping time; repair or replacement of damaged/warped sheets by the Subcontractor at its cost.'],
+    ['Materials & machinery', 'Formwork materials, props, ties, release agent and consumables are supplied by the Contractor unless the line note states otherwise. Cranes, hoists and power are provided by the Contractor. Hand tools, tackles and all labour are by the Subcontractor.'],
+    ['Standards', 'IS 14687 (falsework for concrete structures), IS 456:2000 (formwork, stripping times and tolerances) and the approved drawings. Formwork must be rigid, leak-proof (joints sealed), clean and true to line and level.'],
+    ['Pre-pour hold point', 'No concreting shall start without a signed pre-pour inspection (formwork, levels, plumb, cut-outs, embedments, cleaning). The Subcontractor shall request the inspection at least 4 hours before the planned pour.'],
+    ['Stripping', 'Formwork shall not be stripped before the minimum period permitted by IS 456 Cl. 11.3 or before the Contractor\'s written/verbal clearance. Any damage to concrete from early or careless stripping shall be rectified by the Subcontractor at its cost.'],
+    ['Measurement', 'Net contact area of concrete in contact with formwork, as per IS 1200, from approved drawings and jointly measured at site. Openings, overlaps and wastage are not measured.'],
+    ['Quality & rework', 'Out-of-plumb, bulged, honeycombed or misaligned concrete caused by faulty formwork shall be rectified/chipped and redone at the Subcontractor\'s cost, including materials and testing.'],
+    ['Safety', 'Edge protection and safe access at all slab edges and openings; no one to work under props being removed; harness for work at height.'],
+  ]},
+  { key: 'reinforcement', title: 'REINFORCEMENT / STEEL', re: /reinforc|rebar|bar bending|steel|\bbbs\b|\btmt\b/i, pts: [
+    ['Scope', 'Unloading, stacking, cutting, bending, placing, tying and fixing of reinforcement as per approved drawings and Bar Bending Schedule, including laps, anchorage, spacers, chairs, starter bars, cover blocks and checking of cover, spacing and positions before every pour; dowel/starter bar protection and cleaning of bars before concreting.'],
+    ['Materials & machinery', 'Steel, binding wire, cover blocks and spacers are supplied by the Contractor unless stated otherwise. Cutting/bending machines are by the Subcontractor unless provided by the Contractor.'],
+    ['Standards', 'IS 2502 (bending and fixing of bars), IS 1786 (TMT bars) and IS 456:2000 for cover, laps and anchorage. Bars shall be free from loose rust, oil, paint, mud and concrete slurry.'],
+    ['Inspection', 'Reinforcement shall be inspected and passed (diameter, spacing, laps, cover, alignment) by the Contractor/consultant before shuttering is closed or concrete is poured.'],
+    ['Measurement', 'Theoretical weight (kg/MT) of bars as per approved drawings/BBS (IS standard unit weights). Laps beyond those shown in drawings, chairs and spacers, binding wire and cutting waste are not measured unless approved in writing.'],
+    ['Wastage & reconciliation', 'Steel issued shall be reconciled against the BBS for each pour/floor. Cutting waste/shortage beyond the wastage norm notified by the Contractor shall be recovered at the Contractor\'s purchase cost. Off-cuts and scrap shall be returned to the store.'],
+    ['Quality & rework', 'Wrongly cut, bent or placed bars shall be corrected at the Subcontractor\'s cost; no heating or re-bending of TMT bars without written approval.'],
+  ]},
+  { key: 'concrete', title: 'CONCRETING', re: /concret|\brmc\b|pour|pump|curing|\bpcc\b|\brcc\b/i, pts: [
+    ['Scope', 'Receiving, placing, spreading, compacting (needle/surface vibrators), levelling, finishing and curing of concrete including construction-joint preparation, pour-stopper fixing, removal of laitance, slab finishing to level, protection from rain/sun and cleaning of equipment and surroundings after the pour.'],
+    ['Materials & machinery', 'Concrete (RMC or site-mixed), pump/placing boom, vibrators and power are provided by the Contractor unless stated otherwise. Sufficient trained gangs, hand tools, finishing tools and curing labour are by the Subcontractor.'],
+    ['Standards', 'IS 456:2000 (placing, compaction, curing, construction joints, cube testing) and approved mix design. No water shall be added at site to the mix. Concrete shall be placed within the initial setting time.'],
+    ['Pour clearance', 'Pours are done only after the pour card is signed by QA/QC and the Contractor\'s engineer. The Subcontractor shall maintain a minimum standby gang and arrange lighting for night pours at its cost where the pour overruns.'],
+    ['Curing', 'Curing shall be continuous for the period required by IS 456 Cl. 13.5 (not less than 7 days for OPC; 10 days or more for mineral-admixture cement). Curing records shall be kept; failure to cure is a defect to be rectified at the Subcontractor\'s cost.'],
+    ['Measurement', 'Net volume (cum) as per drawings for the elements actually cast, as jointly measured and certified. Spillage, over-pour and wastage are not measured.'],
+    ['Quality & rework', 'Honeycombing, cold joints, cracks, surface defects, slab level errors and poor finishing caused by the Subcontractor shall be repaired with approved materials and methods at its cost. Concrete wasted by spillage or poor planning beyond the notified norm shall be recovered at cost.'],
+  ]},
+  { key: 'blockwork', title: 'BLOCKWORK / MASONRY', re: /block|brick|masonry|aac\b/i, pts: [
+    ['Scope', 'Setting out, laying of blocks/bricks in cement mortar (or block adhesive where specified) in true line, level and plumb, including joint raking, lintels/sill bands and reinforcement/mesh at joints as specified, provision of openings, chasing allowances, curing and cleaning of work.'],
+    ['Materials & machinery', 'Blocks, cement, sand, adhesive and mesh are supplied by the Contractor unless stated otherwise. Mortar mixing, hand tools, scaffolding for work up to the working height and all labour are by the Subcontractor unless stated otherwise.'],
+    ['Standards', 'IS 2212 (brickwork), IS 2572 / IS 6041 (block masonry) as applicable, specification and approved drawings. Mortar ratio as specified; mortar not used after its initial setting time.'],
+    ['Tolerances', 'Verticality, line and level to the tolerance in the specification; maximum joint thickness as specified. The last course below slab/beam shall be packed and filled as per specification after the waiting period.'],
+    ['Measurement', 'Net volume (cum) or area (sqm) as per approved drawings, deducting openings, beams, columns and RCC elements as per IS 1200.'],
+    ['Wastage', 'Breakage and wastage of blocks and mortar beyond the norm notified by the Contractor shall be recovered at the Contractor\'s purchase cost.'],
+    ['Quality & rework', 'Cracked, out-of-plumb or poorly bonded work shall be demolished and rebuilt at the Subcontractor\'s cost.'],
+  ]},
+  { key: 'plaster', title: 'PLASTERING (INTERNAL / EXTERNAL)', re: /plaster|putty|render|gypsum|finish coat/i, pts: [
+    ['Scope', 'Surface preparation (hacking, cleaning, wetting, dash/bonding coat where specified), fixing of mesh at junctions of dissimilar materials, grounds, plumb and level control, application of plaster in the specified thickness and coats, finishing, curing, making good around fixtures and cleaning of the area.'],
+    ['Materials & machinery', 'Cement, sand, mesh and admixtures are supplied by the Contractor unless stated otherwise. Mixing, hand tools and the working platform up to the permitted height are by the Subcontractor unless stated otherwise.'],
+    ['Standards', 'IS 1661 (cement and cement-lime plaster finishes), IS 2402 (external rendered finishes) and approved specification. Plaster shall be true to line, level and plumb, free of cracks, hollowness, dampness patches and visible joints.'],
+    ['Hold point', 'Each room/elevation shall be checked for line, level, plumb, corners, thickness and hollowness (tapping) before it is accepted for the next activity.'],
+    ['Curing', 'Continuous curing for at least 7 days; external plaster to be protected from rain and direct sun.'],
+    ['Measurement', 'Net plastered area (sqm / sqft) as per IS 1200 with the deductions for openings stated therein. Returns, reveals and edges as per IS 1200.'],
+    ['Quality & rework', 'Cracked, hollow, undulating or out-of-thickness plaster shall be removed and redone at the Subcontractor\'s cost. Mortar wastage beyond the notified norm shall be recovered.'],
+  ]},
+  { key: 'scaffolding', title: 'SCAFFOLDING / ACCESS', re: /scaffold|cuplock|staging|platform|ladder/i, pts: [
+    ['Scope', 'Erection, maintenance, alteration and dismantling of scaffolding/working platforms with toe boards, guard rails, safe access, base plates and tie-ins, with daily inspection tags.'],
+    ['Standards & safety', 'IS 4014 (steel tubular scaffolding) and IS 3696 (scaffolds and ladders). Scaffolds shall be inspected and tagged before use and after any alteration; no overloading; no use of damaged members.'],
+    ['Measurement', 'As per the unit in the line item (sqm of elevation, running metre or lump sum) and as jointly measured. Re-erection due to Subcontractor error is not measured.'],
+  ]},
+  { key: 'waterproofing', title: 'WATERPROOFING', re: /waterproof|damp|membrane|coba|sunken|terrace treatment/i, pts: [
+    ['Scope', 'Surface preparation, priming, application of the specified waterproofing system in the specified number of coats/thickness, treatment of junctions, pipe penetrations and corners, protection screed and curing.'],
+    ['Standards', 'IS 3067 and the manufacturer\'s technical data sheet. Application only by trained applicators, on a dry and clean substrate and within the product\'s application conditions.'],
+    ['Testing & guarantee', 'Flood/ponding test for a minimum of 48 hours with the Contractor\'s representative before any screed or finish is laid. The Subcontractor shall give a written guarantee for the period stated in the Work Order (or the manufacturer\'s warranty, if longer) and shall rectify any leakage at its own cost during that period.'],
+    ['Measurement', 'Net treated area (sqm) including the agreed upturns, as jointly measured.'],
+  ]},
+  { key: 'flooring', title: 'FLOORING / TILING', re: /floor|tile|tiling|granite|marble|vitrified|skirting|screed/i, pts: [
+    ['Scope', 'Substrate preparation, setting out and layout approval, laying with the specified adhesive/mortar, levelling and slope to drains, grouting, cleaning and protection of finished work, cutting and fitting around fixtures.'],
+    ['Standards', 'Approved layout and specification; IS 2571 (cement concrete flooring) as applicable. Flatness, level, slope, alignment of joints and colour/shade matching to be checked on a sample area approved in writing before mass work.'],
+    ['Measurement', 'Net laid area (sqm / sqft) as per IS 1200; skirting by running length; cutting waste is not measured.'],
+    ['Quality & rework', 'Hollow tiles, lippage, uneven slope, stained or cracked tiles caused by workmanship shall be removed and relaid at the Subcontractor\'s cost. Breakage beyond the notified norm shall be recovered at cost.'],
+  ]},
+  { key: 'painting', title: 'PAINTING', re: /paint|primer|emulsion|enamel|texture/i, pts: [
+    ['Scope', 'Surface preparation (scraping, filling, sanding), primer, putty (if in scope) and the specified number of finish coats, touch-ups, masking and protection of adjacent surfaces, cleaning after completion.'],
+    ['Standards', 'IS 2395 and the manufacturer\'s specification. Each coat shall be inspected and passed before the next coat; shade approved on a sample area.'],
+    ['Measurement', 'Net painted area (sqm / sqft) as per IS 1200.'],
+    ['Quality & rework', 'Patchy, uneven, peeling or incorrectly shaded work shall be redone at the Subcontractor\'s cost. Paint wastage beyond the notified norm shall be recovered.'],
+  ]},
+  { key: 'excavation', title: 'EXCAVATION / EARTHWORK', re: /excavat|earthwork|backfill|filling|shoring|dewater|soil/i, pts: [
+    ['Scope', 'Excavation to the lines, levels and depths shown in drawings, trimming, dressing, disposal of surplus soil to the designated place, backfilling in layers with compaction, and protection of excavation against collapse and water.'],
+    ['Safety', 'Safe slopes/shoring, barricading, safe access and spoil kept away from edges as per IS 3764 (excavation safety). Underground utilities shall be confirmed with the Contractor before digging.'],
+    ['Measurement', 'Net volume (cum) as per drawings/levels jointly recorded before and after excavation. Over-excavation without written instruction is not paid and shall be restored at the Subcontractor\'s cost.'],
+  ]},
+];
+function woActivityKeys(lines, items){
+  const found = [];
+  (lines || []).forEach(l => {
+    const it = (items || []).find(b => b.id === l.budget_item_id); if(!it) return;
+    const text = (it.description || '') + ' ' + (typeof getStagePath === 'function' ? getStagePath(it.stage_id) : '');
+    const hit = WO_ACTIVITY_LIB.find(a => a.re.test(text));
+    if(hit && !found.includes(hit.key)) found.push(hit.key);
+  });
+  return found;
+}
+function buildWOTerms(o){
+  o = o || {};
+  const ret = Number(o.retention_pct) || 0, tds = Number(o.tds_pct) || 0, gst = Number(o.gst_pct) || 0;
+  const safety = (Number(o.safety_pct) > 0) ? `${o.safety_pct}% of each bill` : (Number(o.safety_amount) > 0 ? `₹${fmtNum(o.safety_amount)} fixed` : '');
+  const keys = o.activityKeys || [];
+  const acts = keys.map(k => WO_ACTIVITY_LIB.find(a => a.key === k)).filter(Boolean);
+  let n = 0; const H = t => `\n${++n}. ${t}\n`;
+  let t = 'GENERAL TERMS & CONDITIONS\n';
+  t += H('CONTRACT DOCUMENTS & INTERPRETATION');
+  t += `1.1 This Work Order, its scope schedule (line items with quantity and rate), these terms, the approved drawings, specifications, BOQ and written site instructions together form the contract. In case of conflict the order of precedence is: this Work Order → approved drawings → specifications → site instructions.\n1.2 "Contractor" means Cameo Constructions and Infrastructure (CCI). "Subcontractor" means the party named in this Work Order. "Engineer" means the Contractor's authorised site engineer / QS / PM.\n1.3 The Subcontractor confirms that it has visited the site, studied the drawings and scope and accepts the rates as full compensation for the work described.\n`;
+  t += H('SCOPE OF WORK');
+  t += `2.1 The scope is the work described in the line items, completed in all respects as per drawings, specifications and the Engineer's instructions, including all incidental work necessary for a complete, functional and defect-free result, even if not expressly mentioned.\n2.2 Any work outside the scope shall be executed only on written instruction of the Engineer and at rates agreed in writing in advance. Work done without written instruction shall not be paid.\n2.3 The Subcontractor shall not sublet or assign any part of the work without the Contractor's prior written consent.\n`;
+  t += H('RATES & MEASUREMENT');
+  t += `3.1 Rates are firm for the full duration of the Work Order and inclusive of all labour, supervision, tools, tackles, consumables (unless stated otherwise), transport of labour, overheads, profit, all levies and duties, but ${gst > 0 ? `exclusive of GST at ${gst}%` : 'exclusive of GST (not applicable to this Work Order)'}.\n3.2 Quantities stated are approximate and may increase or decrease as per actual site requirement; rates remain unchanged for variations up to ±25% of the line quantity. Beyond this, rates shall be mutually agreed before execution.\n3.3 Measurements shall be taken jointly at site, recorded and signed by both parties, and are based on net dimensions per approved drawings and IS 1200, unless a different method is stated for an activity below. Only work that is complete and accepted is measured.\n3.4 Material supplied by the Contractor is issued on a reconciliation basis. Wastage beyond the norms notified by the Contractor for the project shall be recovered at the Contractor's purchase cost.\n`;
+  t += H('PAYMENT TERMS');
+  t += `4.1 Quantities of work done, jointly recorded, shall be submitted to the QS department and a running bill raised every fortnight with supporting measurements, and the Contractor shall certify it within a week of submission.\n4.2 Payment is released as per the agreed schedule only after stage completion, QA/QC clearance and housekeeping confirmation.\n4.3 Deductions from every running and final bill: retention ${ret ? ret + '%' : '(as stated in this Work Order)'}; TDS ${tds ? tds + '%' : 'as per prevailing law'}; ${safety ? 'safety charges ' + safety + '; ' : ''}recoveries for materials, wastage, advances, rework, damages, fines and any amounts due to the Contractor.\n4.4 ${gst > 0 ? `GST at ${gst}% is payable extra against a valid tax invoice, only after the Subcontractor's GST return reflects the invoice and the input credit is available to the Contractor. GST shall not be subject to retention.` : 'The Subcontractor declares that it is not liable to charge GST; if it becomes liable it shall inform the Contractor in writing before raising any bill.'}\n4.5 Advances, if any, are secured by the Work Order, are adjustable against subsequent bills and are recoverable on demand if the work is stopped or terminated.\n4.6 The Contractor may withhold payment for work that is defective, incomplete, disputed or where statutory documents/records are pending.\n`;
+  t += H('RETENTION & DEFECTS LIABILITY');
+  t += `5.1 Retention money is held on every bill and released without interest after the Defects Liability Period of 12 months from virtual completion of the work, subject to rectification of all defects.\n5.2 The Subcontractor shall rectify, at its own cost and within the time given, all defects arising from workmanship or materials in its control during the Defects Liability Period; failing which the Contractor may rectify through others and recover the cost with 15% supervision charges from the retention or any due payment.\n`;
+  t += H('TIME, PROGRAMME & DELAYS');
+  t += `6.1 Time is of the essence. The Subcontractor shall follow the master programme and the weekly/daily plans issued by the Engineer and deploy the manpower needed to meet them.\n6.2 If the work is delayed for reasons attributable to the Subcontractor, it shall deploy additional resources (including overtime and night work) at its own cost to recover the schedule. Without recovery, the Contractor may levy delay compensation of 0.5% of the Work Order value per week of delay, subject to a maximum of 5% of the Work Order value, without prejudice to other remedies.\n6.3 Extension of time shall be granted only for delays caused by the Contractor/Client or force majeure, notified in writing within 3 days of the event. Idle labour compensation, if any, is payable only where agreed in writing in advance.\n`;
+  t += H('LABOUR, STATUTORY COMPLIANCE & WELFARE');
+  t += `7.1 The Subcontractor shall hold a valid labour licence and comply with the Contract Labour (Regulation & Abolition) Act, Minimum Wages Act, Payment of Wages Act, ESI, EPF, Building & Other Construction Workers Act, and all applicable laws, and shall furnish registers, ID/Aadhaar copies of workers and challans on demand.\n7.2 Child labour and forced labour are strictly prohibited. Workers shall be paid in full and on time (through bank/UPI) and wage records shall be maintained; on default the Contractor may pay workers directly and recover the amount from the Subcontractor.\n7.3 The Subcontractor shall provide clean and safe accommodation, drinking water, sanitation and first aid for its workers, and shall keep its labour camp hygienic with proper waste disposal.\n7.4 Workers shall carry site ID cards, follow site timings, and be registered through the Contractor's labour entry/attendance system. The Contractor may remove any worker for misconduct or unsafe behaviour.\n`;
+  t += H('SAFETY, HEALTH & ENVIRONMENT');
+  t += `8.1 Use of PPE (helmet, safety shoes, harness for work at height, gloves, goggles as required) is mandatory. No PPE, no entry. PPE for the Subcontractor's workers is at its cost.\n8.2 The Subcontractor shall follow the site safety plan and IS 7969 (safety code for handling and storage of building materials), attend tool-box talks, obtain permits for hot work, work at height and confined spaces, and report every incident or near miss to the Engineer immediately.\n8.3 Edge protection, barricading and safe access shall be maintained in the Subcontractor's work area at all times. Unsafe work shall be stopped by the Engineer without any claim for delay.\n8.4 The Subcontractor is responsible for medical expenses, compensation and legal liability for accidents to its workers and for damage to persons or property caused by its work, and shall keep Workmen's Compensation / group accident insurance valid for the entire duration.\n`;
+  t += H('QUALITY & INSPECTIONS');
+  t += `9.1 All works shall conform to the relevant IS codes, NBC, CPWD specifications, approved drawings and project specifications. Where codes conflict, the stricter requirement applies.\n9.2 Work shall proceed only after the relevant inspection/hold point is cleared (pre-pour, reinforcement, shuttering, concealed work, waterproofing test, etc.). Work covered up without clearance shall be opened up at the Subcontractor's cost.\n9.3 Defective, non-conforming or damaged work shall be rectified or removed and redone at the Subcontractor's cost, including materials, testing and consequential delay.\n9.4 Samples/mock-ups shall be approved in writing before mass production.\n`;
+  t += H('TOOLS, EQUIPMENT & MATERIALS');
+  t += `10.1 The Subcontractor shall arrange all labour, hand tools, tackles and small equipment. Any tools, equipment or materials issued by the Contractor are chargeable unless stated otherwise and shall be returned in good condition; loss or damage shall be recovered at replacement cost.\n10.2 Materials issued by the Contractor shall be used only for this work, stored safely and not removed from site. Surplus and scrap shall be returned to the store with a reconciliation.\n10.3 Setting-out references, benchmarks and levels provided by the Contractor shall be protected by the Subcontractor and any disturbance reported at once.\n`;
+  t += H('HOUSEKEEPING');
+  t += `11.1 The Subcontractor shall clean its work area daily, remove debris to the designated place, keep materials stacked neatly and leave the area clean and safe at the end of every shift. Failing this, the Contractor may clean through others and recover the cost.\n`;
+  if(acts.length){
+    t += H('ACTIVITY-SPECIFIC SCOPE, STANDARDS & MEASUREMENT');
+    t += `The following apply to the activities in this Work Order, in addition to the general conditions above.\n`;
+    acts.forEach((a, i) => {
+      t += `\n12.${i+1} ${a.title}\n`;
+      a.pts.forEach((p, j) => { t += `   (${String.fromCharCode(97 + j)}) ${p[0]}: ${p[1]}\n`; });
+    });
+  }
+  t += H('SUSPENSION & TERMINATION');
+  t += `${n}.1 The Contractor may suspend the work at any time for safety, quality, client instruction or force majeure, with the Subcontractor paid for work done up to suspension.\n${n}.2 If the Subcontractor abandons the work, repeatedly fails to meet quality, safety or schedule, becomes insolvent, or breaches any term and does not remedy it within 7 days of written notice, the Contractor may terminate the Work Order, take over the site, engage others to complete the work and recover the excess cost from amounts due and the retention, and from the Subcontractor otherwise.\n${n}.3 On termination, the Subcontractor shall demobilise promptly, hand over drawings, materials and records, and be paid only for accepted work less all recoveries.\n`;
+  t += H('INDEMNITY, CONFIDENTIALITY & GENERAL');
+  t += `${n}.1 The Subcontractor shall indemnify the Contractor and the Client against all claims, losses, penalties and legal costs arising from its acts, omissions, breach of law or the acts of its workers.\n${n}.2 Drawings, rates, specifications and project information are confidential and shall not be shared or used for any other purpose.\n${n}.3 The Subcontractor shall not hold the Contractor liable for delays or conditions caused by the Client or third parties beyond the extension of time granted under clause 6.3, except as expressly agreed in writing.\n${n}.4 No waiver by the Contractor of any breach shall be a waiver of any later breach. If any clause is held unenforceable, the rest remains in force. Amendments are valid only if in writing and signed by both parties.\n`;
+  t += H('DISPUTES & JURISDICTION');
+  t += `${n}.1 The parties shall first try to settle any dispute by discussion between their senior representatives within 15 days.\n${n}.2 Failing settlement, the dispute shall be referred to a sole arbitrator appointed by the Contractor under the Arbitration & Conciliation Act, 1996, seated in Chennai. The courts at Chennai alone shall have jurisdiction.\n`;
+  return t.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/* A WO line's own description/unit (standalone WOs); falls back to the linked budget item for legacy lines */
+function woLineItem(l){ const b = (l && l.ra_budget_items) || {}; return { ...b, description: (l && l.description) || b.description || '', unit: (l && l.unit) || b.unit || '' }; }
 function matchUnit(raw){
   if(!raw) return null;
   const clean = raw.trim().toLowerCase().replace(/\.$/, '');
@@ -1749,8 +1885,8 @@ async function loadCommittedQuantities(projectId){
     if(error){ console.error(error); return { qty: {}, amount: {} }; }
     const qty = {}, amount = {};
     (data || []).forEach(row => {
-      if(row.estimated_qty) qty[row.budget_item_id] = (qty[row.budget_item_id] || 0) + Number(row.estimated_qty);
-      if(row.estimated_qty && row.agreed_rate) amount[row.budget_item_id] = (amount[row.budget_item_id] || 0) + Number(row.estimated_qty) * Number(row.agreed_rate);
+      if(row.budget_item_id && row.estimated_qty) qty[row.budget_item_id] = (qty[row.budget_item_id] || 0) + Number(row.estimated_qty);
+      if(row.budget_item_id && row.estimated_qty && row.agreed_rate) amount[row.budget_item_id] = (amount[row.budget_item_id] || 0) + Number(row.estimated_qty) * Number(row.agreed_rate);
     });
     return { qty, amount };
   } catch(err){ console.error(err); return { qty: {}, amount: {} }; }
@@ -2498,7 +2634,7 @@ function renderWODetail(project){
       <h4 class="wo-lines-title">Scope of Work</h4>
       <div class="bitem-head" style="grid-template-columns:1fr 100px 100px;"><span>Item</span><span class="qty">WO Qty</span><span class="rate">Rate ₹</span></div>
       ${lines.map(l => {
-        const item = l.ra_budget_items || {};
+        const item = woLineItem(l);
         return `<div class="bitem" style="grid-template-columns:1fr 100px 100px;">
           <span class="desc">${escapeHtml(item.description||'')}<div class="wo-line-path">${escapeHtml(getStagePath(item.stage_id))}</div></span>
           <span class="qty">${l.estimated_qty?fmtNum(l.estimated_qty):'—'} ${escapeHtml(item.unit||'')}</span>
@@ -2623,7 +2759,7 @@ function renderBillEntry(project){
 
   let subTotal = 0, prevSubTotal = 0;
   const rowsHtml = lines.map(l => {
-    const item = l.ra_budget_items || {};
+    const item = woLineItem(l);
     const rate = Number(l.agreed_rate || 0);
     const prevQty = state.billPrevCumulative[l.id] || 0;
     const thisQty = lineMap[l.id] || 0;
@@ -2825,7 +2961,7 @@ function printBill(bill, wo, lines, subTotal, retentionAmt, tdsAmt, safetyAmt, d
   state.billLines.forEach(e => { lineMap[e.wo_line_item_id] = e.this_qty; });
 
   const rows = lines.map((l, idx) => {
-    const item = l.ra_budget_items || {};
+    const item = woLineItem(l);
     const rate = Number(l.agreed_rate || 0);
     const prevQty = state.billPrevCumulative[l.id] || 0;
     const thisQty = lineMap[l.id] || 0;
@@ -3997,19 +4133,19 @@ function renderNewWOForm(project, editingWOId){
       </div>
       <div class="wo-rate-note">Retention/TDS/Safety are set here per Work Order — they vary by project and subcontractor, so there's no shared default. GST is added on top of the billed amount, not deducted — pick "Not applicable" for unregistered subcontractors.</div>
 
-      <h4 class="wo-lines-title">Scope of Work (linked to budget items)</h4>
-      ${!billableItems.length ? `<div class="locked-note"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg> This project has no budget items yet. Add them in Budget Setup before raising a Work Order.</div>` : ''}
+      <h4 class="wo-lines-title">Scope of Work</h4>
       <div id="woLinesTable"></div>
-      ${billableItems.length ? `<button class="btn tiny" id="addWOLineBtn" style="margin-top:8px;">+ Add line item</button>` : ''}
+      <button class="btn tiny" id="addWOLineBtn" style="margin-top:8px;">+ Add line item</button>
 
       <h4 class="wo-lines-title">Terms &amp; Conditions</h4>
-      <div class="wo-rate-note">Pre-filled with your standard clauses — edit, replace, or paste your own before creating the Work Order. This prints exactly as written on the WO document.</div>
-      <div class="field"><textarea id="woTerms" rows="14">${escapeHtml(editing ? (editWO.terms_and_conditions||DEFAULT_WO_TERMS) : DEFAULT_WO_TERMS)}</textarea></div>
+      <div class="wo-rate-note">Built automatically from the retention / TDS / GST you set and the activities in your scope — full general conditions plus technical clauses for each activity. Edit freely; once you edit, it stops auto-updating (use Rebuild to regenerate). Prints exactly as written.</div>
+      <div style="margin-bottom:6px;"><button type="button" class="btn tiny" id="woTermsRebuild">↻ Rebuild terms from scope</button></div>
+      <div class="field"><textarea id="woTerms" rows="30" data-dirty="${editing && editWO.terms_and_conditions ? 1 : 0}">${escapeHtml(editing ? (editWO.terms_and_conditions||DEFAULT_WO_TERMS) : buildWOTerms({retention_pct:5,tds_pct:1,gst_pct:0}))}</textarea></div>
 
       <div class="modal-actions" style="margin-top:24px;">
         <button class="btn" id="cancelWOBtn">Cancel</button>
-        ${(!editing || editWO.status==='draft') ? `<button class="btn" id="saveDraftBtn" ${!billableItems.length ? 'disabled' : ''} title="Save without finishing — it won't be billable until you create it as a Work Order">Save as Draft</button>` : ''}
-        <button class="btn primary" id="saveWOBtn" ${!billableItems.length ? 'disabled' : ''}>${editing && editWO.status!=='draft' ? 'Save Changes' : 'Create Work Order'}</button>
+        ${(!editing || editWO.status==='draft') ? `<button class="btn" id="saveDraftBtn" title="Save without finishing — it won't be billable until you create it as a Work Order">Save as Draft</button>` : ''}
+        <button class="btn primary" id="saveWOBtn">${editing && editWO.status!=='draft' ? 'Save Changes' : 'Create Work Order'}</button>
       </div>
     </div>
   `;
@@ -4055,237 +4191,108 @@ function renderNewWOForm(project, editingWOId){
   scSearch.addEventListener('blur', () => setTimeout(closeScSuggest, 150));
   }
 
-  // Remaining quantity for a budget item = its full budget minus whatever's already
-  // committed to it across every Work Order on this project (loaded into state.committedQty).
-  // When editing, this WO's own pre-existing commitment is added back first, so
-  // you're never blocked by your own prior claim on an item while adjusting it.
-  const remainingFor = (item) => {
-    const base = Number(item.budgeted_qty) - (state.committedQty[item.id] || 0);
-    if(editing && state.editingWOOwnQty && state.editingWOOwnQty[item.id]) return base + state.editingWOOwnQty[item.id];
-    return base;
+  // Work Orders are standalone — lines are typed in directly (no budget link), so the same
+  // activity can go to several subcontractors. Each line: description, activity, unit, qty, rate.
+  const WO_QUICK = {
+    shuttering:    ['Shuttering – erection, alignment, propping & stripping', 'P.sft'],
+    reinforcement: ['Reinforcement – cutting, bending & fixing', 'MT'],
+    concrete:      ['Concreting – placing, vibrating, finishing & curing', 'm3'],
+    blockwork:     ['Blockwork / masonry', 'm3'],
+    plaster:       ['Plastering', 'P.sft'],
+    scaffolding:   ['Scaffolding / working platform', 'P.sft'],
+    waterproofing: ['Waterproofing', 'P.sft'],
+    flooring:      ['Flooring / tiling', 'P.sft'],
+    painting:      ['Painting', 'P.sft'],
+    excavation:    ['Excavation / earthwork', 'm3']
   };
-
-  // Line items — inline spreadsheet-style entry, no popups. The search suggestion
-  // always shows the full WBS path so identically-named items on different floors
-  // (e.g. "Shuttering" on Basement 3 vs 1st Floor) are never ambiguous.
+  const detectActivity = (desc) => { const a = WO_ACTIVITY_LIB.find(x => x.re.test(desc || '')); return a ? a.key : ''; };
+  const woTermsEl = () => document.getElementById('woTerms');
+  const refreshWOTerms = () => {
+    const ta = woTermsEl(); if(!ta || ta.dataset.dirty === '1') return;
+    const keys = [];
+    state.newWOLines.forEach(l => { const k = l.activity || detectActivity(l.description); if(k && k !== 'other' && !keys.includes(k)) keys.push(k); });
+    ta.value = buildWOTerms({
+      retention_pct: document.getElementById('woRetention').value, tds_pct: document.getElementById('woTds').value,
+      gst_pct: document.getElementById('woGst').value, safety_pct: document.getElementById('woSafetyPct').value,
+      safety_amount: document.getElementById('woSafetyAmt').value, activityKeys: keys
+    });
+  };
+  const GRID = '1.7fr 130px 74px 92px 100px 104px 56px';
   const renderWOLines = () => {
     const table = document.getElementById('woLinesTable');
     if(!table) return;
-    table.innerHTML = '';
-    if(state.newWOLines.length || state.addingWOLine){
-      table.innerHTML = `<div class="bitem-head" style="grid-template-columns:1fr 100px 90px 100px 100px 62px;"><span>Budget Item (WBS path)</span><span class="qty">Remaining</span><span class="qty">WO Qty</span><span class="rate">Agreed Rate ₹</span><span class="amount">Amount ₹</span><span></span></div>`;
-    } else {
-      table.innerHTML = `<div class="wo-lines-empty">No line items added yet.</div>`;
-    }
-    let woTotal = 0;
-    state.newWOLines.forEach((line, idx) => {
-      const item = billableItems.find(b => b.id === line.budget_item_id);
-      const amount = (line.estimated_qty && line.agreed_rate) ? line.estimated_qty * line.agreed_rate : null;
-      if(amount) woTotal += amount;
-      const remaining = item ? remainingFor(item) : 0;
-      const row = document.createElement('div');
-      row.className = 'bitem';
-      row.style.gridTemplateColumns = '1fr 100px 90px 100px 100px 62px';
-      row.innerHTML = `
-        <span class="desc">
-          ${item ? escapeHtml(item.description) : '—'}
-          <button class="icon-btn wo-line-note-btn" data-idx="${idx}" title="${line.scope_description ? 'Edit description' : 'Add description'}">${line.scope_description ? '📝' : '+ note'}</button>
-          ${item ? `<div class="wo-line-path">${escapeHtml(getStagePath(item.stage_id))}</div>` : ''}
-        </span>
-        <span class="qty">${fmtNum(remaining)} ${item ? escapeHtml(item.unit) : ''}</span>
-        <span><input type="number" inputmode="decimal" step="0.001" class="wo-line-qty" data-idx="${idx}" value="${line.estimated_qty||''}" placeholder="Qty"></span>
-        <span><input type="number" inputmode="decimal" step="0.01" class="wo-line-rate" data-idx="${idx}" value="${line.agreed_rate||''}" placeholder="Rate"></span>
-        <span class="amount">${amount ? fmtNum(amount) : '—'}</span>
-        <span class="del"><button class="icon-btn wo-line-del" data-idx="${idx}">✕</button></span>
-      `;
-      table.appendChild(row);
+    const lines = state.newWOLines;
+    const unitOpts = (cur) => ALLOWED_UNITS.map(u => `<option value="${u}" ${cur===u?'selected':''}>${u}</option>`).join('');
+    const actOpts = (cur) => `<option value="">Auto</option>` + WO_ACTIVITY_LIB.map(a => `<option value="${a.key}" ${cur===a.key?'selected':''}>${escapeHtml(a.title.split(' / ')[0].split(' (')[0])}</option>`).join('') + `<option value="other" ${cur==='other'?'selected':''}>Other</option>`;
+    table.innerHTML = `
+      <div class="wo-rate-note" style="margin-bottom:8px;">Type each work item directly — not linked to the budget, so the same activity can be given to different subcontractors. The activity decides which technical clauses are added to the terms below.</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
+        <span style="font-size:12px;color:#8B8676;align-self:center;">Quick add:</span>
+        ${Object.keys(WO_QUICK).map(k => `<button type="button" class="btn tiny wo-quick" data-k="${k}">+ ${escapeHtml(WO_ACTIVITY_LIB.find(a => a.key === k).title.split(' / ')[0].split(' (')[0])}</button>`).join('')}
+      </div>
+      ${lines.length ? `<div class="bitem-head" style="grid-template-columns:${GRID};"><span>Work item / description</span><span>Activity</span><span>Unit</span><span class="qty">Qty</span><span class="rate">Rate ₹</span><span class="qty">Amount ₹</span><span></span></div>` : `<div class="wo-lines-empty">No line items yet — use Quick add or “+ Add line item”.</div>`}
+      <div id="woLineRows"></div>
+      ${lines.length ? `<div class="bitem bitem-subtotal" style="grid-template-columns:${GRID};"><span class="desc">Work Order Total (ex-GST)</span><span></span><span></span><span></span><span></span><span class="amount" id="woTotalAmt">₹0</span><span></span></div>` : ''}`;
+    const rows = table.querySelector('#woLineRows');
+    const fmtAmt = (l) => (l.estimated_qty && l.agreed_rate) ? fmtNum(l.estimated_qty * l.agreed_rate) : '—';
+    lines.forEach((l, idx) => {
+      const r = document.createElement('div');
+      r.className = 'bitem'; r.style.gridTemplateColumns = GRID; r.dataset.idx = idx;
+      r.innerHTML = `
+        <span class="desc"><input class="wo-line-desc" data-idx="${idx}" value="${escapeHtml(l.description||'')}" placeholder="e.g. Shuttering for slab and beams" style="width:100%;">
+          <button type="button" class="icon-btn wo-line-note-btn" data-idx="${idx}" title="Scope note printed under this item">${l.scope_description ? '📝 note' : '+ note'}</button></span>
+        <span><select class="wo-line-act" data-idx="${idx}">${actOpts(l.activity||'')}</select></span>
+        <span><select class="wo-line-unit" data-idx="${idx}">${unitOpts(l.unit||'')}</select></span>
+        <span><input type="number" inputmode="decimal" step="0.001" class="wo-line-qty" data-idx="${idx}" value="${l.estimated_qty||''}" placeholder="Qty"></span>
+        <span><input type="number" inputmode="decimal" step="0.01" class="wo-line-rate" data-idx="${idx}" value="${l.agreed_rate||''}" placeholder="Rate"></span>
+        <span class="amount" id="woAmt${idx}">${fmtAmt(l)}</span>
+        <span class="del"><button type="button" class="icon-btn wo-line-del" data-idx="${idx}">✕</button></span>`;
+      rows.appendChild(r);
     });
-
-    if(state.addingWOLine){
-      const already = new Set(state.newWOLines.map(l => l.budget_item_id));
-      const available = billableItems.filter(b => !already.has(b.id));
-      const addRow = document.createElement('div');
-      addRow.className = 'bitem bitem-add';
-      addRow.style.gridTemplateColumns = '1fr 100px 90px 100px 100px 62px';
-      addRow.innerHTML = `
-        <div class="bi-desc-wrap"><input class="wol-search" placeholder="Search a budget item by name…" autocomplete="off"></div>
-        <span class="qty" id="wolRemaining">—</span>
-        <span><input type="number" inputmode="decimal" step="0.001" class="wol-qty" placeholder="Qty" disabled></span>
-        <span><input type="number" inputmode="decimal" step="0.01" class="wol-rate" placeholder="Rate" disabled></span>
-        <span class="amount" id="wolAmount">—</span>
-        <span class="bi-add-actions"><button class="icon-btn wol-save" title="Add"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="display:inline-block;vertical-align:-2px"><path d="M20 6 9 17l-5-5"/></svg></button><button class="icon-btn wol-cancel" title="Cancel">✕</button></span>
-      `;
-      table.appendChild(addRow);
-
-      const searchWrap = addRow.querySelector('.bi-desc-wrap');
-      const searchInput = addRow.querySelector('.wol-search');
-      const qtyInput = addRow.querySelector('.wol-qty');
-      const rateInput = addRow.querySelector('.wol-rate');
-      const remainingSpan = addRow.querySelector('#wolRemaining');
-      const amountSpan = addRow.querySelector('#wolAmount');
-      let selectedItem = null;
-      let suggestBox = null;
-
-      const closeSuggest = () => { if(suggestBox){ suggestBox.remove(); suggestBox = null; } };
-      const openSuggest = () => {
-        closeSuggest();
-        const q = searchInput.value.trim().toLowerCase();
-        const matches = available
-          .filter(b => !q || b.description.toLowerCase().includes(q))
-          .slice(0, 10);
-        if(!matches.length) return;
-        suggestBox = document.createElement('div');
-        suggestBox.className = 'bi-suggest';
-        matches.forEach(b => {
-          const rem = remainingFor(b);
-          const opt = document.createElement('div');
-          opt.className = 'bi-suggest-item wol-suggest-item';
-          opt.innerHTML = `
-            <span>
-              <div>${escapeHtml(b.description)}</div>
-              <div class="wo-line-path">${escapeHtml(getStagePath(b.stage_id))}</div>
-            </span>
-            <span class="u">${fmtNum(rem)} ${escapeHtml(b.unit)} left</span>
-          `;
-          opt.onmousedown = (e) => {
-            e.preventDefault();
-            selectedItem = b;
-            searchInput.value = b.description;
-            remainingSpan.textContent = `${fmtNum(remainingFor(b))} ${b.unit}`;
-            qtyInput.disabled = false; rateInput.disabled = false;
-            closeSuggest();
-            qtyInput.focus();
-          };
-          suggestBox.appendChild(opt);
-        });
-        searchWrap.appendChild(suggestBox);
-      };
-      searchInput.addEventListener('focus', openSuggest);
-      searchInput.addEventListener('input', () => { selectedItem = null; qtyInput.disabled = true; rateInput.disabled = true; remainingSpan.textContent = '—'; openSuggest(); });
-      searchInput.addEventListener('blur', () => setTimeout(closeSuggest, 150));
-      searchInput.addEventListener('keydown', e => { if(e.key === 'Escape'){ state.addingWOLine = false; renderWOLines(); } });
-
-      const updateAmount = () => {
-        const q = parseFloat(qtyInput.value), r = parseFloat(rateInput.value);
-        amountSpan.textContent = (!isNaN(q) && !isNaN(r)) ? fmtNum(q*r) : '—';
-      };
-      qtyInput.addEventListener('input', updateAmount);
-      rateInput.addEventListener('input', updateAmount);
-
-      const commitLine = () => {
-        if(!selectedItem){ toast('Pick a budget item from the list first.', true); return; }
-        const qty = parseFloat(qtyInput.value);
-        const rate = parseFloat(rateInput.value) || null;
-        if(isNaN(qty)){ toast('Enter a quantity.', true); return; }
-        const remaining = remainingFor(selectedItem);
-        if(qty > remaining){
-          toast(`Can't exceed the WBS budget — only ${fmtNum(remaining)} ${selectedItem.unit} remaining for "${selectedItem.description}".`, true);
-          return;
-        }
-        state.newWOLines.push({ budget_item_id: selectedItem.id, agreed_rate: rate, estimated_qty: qty, scope_description: null });
-        state.addingWOLine = false;
-        renderWOLines();
-        if(selectedItem.budgeted_rate && rate){
-          const budgetedAmount = Number(selectedItem.budgeted_qty) * Number(selectedItem.budgeted_rate);
-          const committedAmount = (state.committedAmount[selectedItem.id] || 0) + (qty * rate);
-          if(committedAmount > budgetedAmount){
-            toast(`Heads up: at ₹${fmtNum(rate)}, "${selectedItem.description}" now costs more than its ₹${fmtNum(budgetedAmount)} budget (₹${fmtNum(committedAmount)} committed). Quantity is still within the WBS cap — this is a cost flag, not a block.`, true);
-          }
-        }
-      };
-      addRow.querySelector('.wol-save').onclick = commitLine;
-      addRow.querySelector('.wol-cancel').onclick = () => { state.addingWOLine = false; renderWOLines(); };
-      qtyInput.addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); rateInput.focus(); } });
-      rateInput.addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); commitLine(); } });
-      setTimeout(() => searchInput.focus(), 30);
-    }
-
-    if(state.newWOLines.length){
-      const totalRow = document.createElement('div');
-      totalRow.className = 'bitem bitem-subtotal';
-      totalRow.style.gridTemplateColumns = '1fr 100px 90px 100px 100px 62px';
-      totalRow.innerHTML = `<span class="desc">Work Order Total</span><span></span><span></span><span></span><span class="amount">₹${fmtNum(woTotal)}</span><span></span>`;
-      table.appendChild(totalRow);
-    }
-
-    // Live amount update without rebuilding the table (rebuilding on every
-    // keystroke was destroying focus — you could only type one character at a time).
-    const recomputeAmounts = () => {
-      let woTotal = 0;
-      state.newWOLines.forEach((line, idx) => {
-        const amount = (line.estimated_qty && line.agreed_rate) ? line.estimated_qty * line.agreed_rate : null;
-        if(amount) woTotal += amount;
-        const rateInput = table.querySelector(`.wo-line-rate[data-idx="${idx}"]`);
-        const amtEl = rateInput ? rateInput.closest('.bitem').querySelector('.amount') : null;
-        if(amtEl) amtEl.textContent = amount ? fmtNum(amount) : '—';
-      });
-      const totalEl = table.querySelector('.bitem-subtotal .amount');
-      if(totalEl) totalEl.textContent = '₹' + fmtNum(woTotal);
+    const recompute = () => {
+      let tot = 0;
+      lines.forEach((l, i) => { const a = document.getElementById('woAmt' + i); if(a) a.textContent = fmtAmt(l); if(l.estimated_qty && l.agreed_rate) tot += l.estimated_qty * l.agreed_rate; });
+      const t = document.getElementById('woTotalAmt'); if(t) t.textContent = '₹' + fmtNum(tot);
     };
-
-    table.querySelectorAll('.wo-line-qty').forEach(inp => {
-      inp.addEventListener('input', () => {
-        state.newWOLines[+inp.dataset.idx].estimated_qty = parseFloat(inp.value) || null;
-        recomputeAmounts();
-      });
-      inp.addEventListener('change', () => {
-        const idx = +inp.dataset.idx;
-        const item = billableItems.find(b => b.id === state.newWOLines[idx].budget_item_id);
-        const remaining = item ? remainingFor(item) : Infinity;
-        const val = parseFloat(inp.value) || null;
-        if(val !== null && val > remaining){
-          toast(`Can't exceed the WBS budget — only ${fmtNum(remaining)} ${item ? item.unit : ''} remaining for "${item ? item.description : 'this item'}".`, true);
-          inp.value = '';
-          state.newWOLines[idx].estimated_qty = null;
-          recomputeAmounts();
-          return;
-        }
-        state.newWOLines[idx].estimated_qty = val;
-        renderWOLines();
-      });
-    });
-    table.querySelectorAll('.wo-line-rate').forEach(inp => {
-      inp.addEventListener('input', () => {
-        state.newWOLines[+inp.dataset.idx].agreed_rate = parseFloat(inp.value) || null;
-        recomputeAmounts();
-      });
-      inp.addEventListener('change', () => {
-        const idx = +inp.dataset.idx;
-        const line = state.newWOLines[idx];
-        const item = billableItems.find(b => b.id === line.budget_item_id);
-        // Rate has no cap — subcontractors negotiate their own rate. This just
-        // surfaces a heads-up when a higher rate pushes the item's total cost
-        // over what was budgeted, without blocking the entry.
-        if(item && item.budgeted_rate && line.agreed_rate && line.estimated_qty){
-          const budgetedAmount = Number(item.budgeted_qty) * Number(item.budgeted_rate);
-          const committedAmount = (state.committedAmount[item.id] || 0) + (line.estimated_qty * line.agreed_rate);
-          if(committedAmount > budgetedAmount){
-            toast(`Heads up: at ₹${fmtNum(line.agreed_rate)}, "${item.description}" is now costing more than its ₹${fmtNum(budgetedAmount)} budget (₹${fmtNum(committedAmount)} committed so far). Quantity is still within the WBS cap — this is a cost flag, not a block.`, true);
-          }
-        }
-      });
-    });
-    table.querySelectorAll('.wo-line-del').forEach(btn => {
-      btn.addEventListener('click', () => { state.newWOLines.splice(+btn.dataset.idx, 1); renderWOLines(); });
-    });
-    table.querySelectorAll('.wo-line-note-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const idx = +btn.dataset.idx;
-        const current = state.newWOLines[idx].scope_description || '';
-        const val = prompt('Scope description for this line (printed on the Work Order document):', current);
-        if(val !== null){ state.newWOLines[idx].scope_description = val.trim() || null; renderWOLines(); }
-      });
-    });
+    recompute();
+    table.querySelectorAll('.wo-line-desc').forEach(inp => inp.addEventListener('input', () => {
+      const l = lines[+inp.dataset.idx]; l.description = inp.value;
+      if(!l.activityManual){ const k = detectActivity(inp.value); l.activity = k || ''; const sel = table.querySelector(`.wo-line-act[data-idx="${inp.dataset.idx}"]`); if(sel) sel.value = l.activity; }
+      refreshWOTerms();
+    }));
+    table.querySelectorAll('.wo-line-act').forEach(sel => sel.addEventListener('change', () => { const l = lines[+sel.dataset.idx]; l.activity = sel.value; l.activityManual = !!sel.value; refreshWOTerms(); }));
+    table.querySelectorAll('.wo-line-unit').forEach(sel => sel.addEventListener('change', () => { lines[+sel.dataset.idx].unit = sel.value; }));
+    table.querySelectorAll('.wo-line-qty').forEach(inp => inp.addEventListener('input', () => { lines[+inp.dataset.idx].estimated_qty = parseFloat(inp.value) || null; recompute(); }));
+    table.querySelectorAll('.wo-line-rate').forEach(inp => inp.addEventListener('input', () => { lines[+inp.dataset.idx].agreed_rate = parseFloat(inp.value) || null; recompute(); }));
+    table.querySelectorAll('.wo-line-del').forEach(btn => btn.addEventListener('click', () => { lines.splice(+btn.dataset.idx, 1); renderWOLines(); }));
+    table.querySelectorAll('.wo-line-note-btn').forEach(btn => btn.addEventListener('click', () => {
+      const l = lines[+btn.dataset.idx];
+      const val = prompt('Scope note for this item (printed under it on the Work Order):', l.scope_description || '');
+      if(val !== null){ l.scope_description = val.trim() || null; renderWOLines(); }
+    }));
+    table.querySelectorAll('.wo-quick').forEach(btn => btn.addEventListener('click', () => {
+      const [d, u] = WO_QUICK[btn.dataset.k];
+      lines.push({ budget_item_id: null, description: d, activity: btn.dataset.k, unit: u, agreed_rate: null, estimated_qty: null, scope_description: null });
+      renderWOLines();
+      const last = table.querySelectorAll('.wo-line-qty'); if(last.length) last[last.length - 1].focus();
+    }));
+    refreshWOTerms();
   };
   renderWOLines();
 
   const addLineBtn = document.getElementById('addWOLineBtn');
   if(addLineBtn) addLineBtn.onclick = () => {
-    const already = new Set(state.newWOLines.map(l => l.budget_item_id));
-    if(billableItems.every(b => already.has(b.id))){ toast('All budget items are already added to this Work Order.', true); return; }
-    state.addingWOLine = true;
+    state.newWOLines.push({ budget_item_id: null, description: '', activity: '', unit: 'P.sft', agreed_rate: null, estimated_qty: null, scope_description: null });
     renderWOLines();
+    const d = document.querySelectorAll('.wo-line-desc'); if(d.length) d[d.length - 1].focus();
   };
+  ['woRetention','woTds','woSafetyPct','woSafetyAmt','woGst'].forEach(id => { const el = document.getElementById(id); if(el) el.addEventListener('input', refreshWOTerms), el && el.addEventListener('change', refreshWOTerms); });
+  const termsEl = woTermsEl();
+  if(termsEl){
+    termsEl.addEventListener('input', () => { termsEl.dataset.dirty = '1'; });
+    const rb = document.getElementById('woTermsRebuild');
+    if(rb) rb.onclick = () => { if(termsEl.dataset.dirty === '1' && !confirm('Replace the edited terms with freshly built ones from the current scope?')) return; termsEl.dataset.dirty = '0'; refreshWOTerms(); };
+  }
 
   document.getElementById('cancelWOBtn').onclick = () => { state.creatingWO = false; state.editingWOId = null; state.editingWOOriginalLineIds = null; state.addingWOLine = false; renderMain(); };
   const saveWO = async (asDraft) => {
@@ -4305,13 +4312,14 @@ function renderNewWOForm(project, editingWOId){
       // A draft only needs a subcontractor — fill the rest with safe placeholders; incomplete lines (no rate) are left out.
       if(!wo_ref) wo_ref = 'DRAFT-' + Date.now().toString().slice(-6);
       if(!wo_date) wo_date = new Date().toISOString().slice(0,10);
-      const dropped = state.newWOLines.filter(l => !l.agreed_rate).length;
-      if(dropped){ state.newWOLines = state.newWOLines.filter(l => l.agreed_rate); toast(dropped + ' line(s) without a rate were left out of the draft.'); }
+      const dropped = state.newWOLines.filter(l => !(l.description||'').trim() || !l.agreed_rate).length;
+      if(dropped){ state.newWOLines = state.newWOLines.filter(l => (l.description||'').trim() && l.agreed_rate); toast(dropped + ' incomplete line(s) were left out of the draft.'); }
     } else {
       if(!wo_ref){ toast('WO reference number is required.', true); return; }
       if(!wo_date){ toast('WO date is required.', true); return; }
       if(!state.newWOLines.length){ toast('Add at least one line item.', true); return; }
-      if(state.newWOLines.some(l => !l.agreed_rate)){ toast('Every line item needs an agreed rate.', true); return; }
+      if(state.newWOLines.some(l => !(l.description||'').trim())){ toast('Every line item needs a description.', true); return; }
+      if(state.newWOLines.some(l => !l.estimated_qty || !l.agreed_rate)){ toast('Every line item needs a quantity and an agreed rate.', true); return; }
     }
 
     const saveBtn = document.getElementById(asDraft ? 'saveDraftBtn' : 'saveWOBtn');
@@ -4363,12 +4371,11 @@ function renderNewWOForm(project, editingWOId){
 async function openWOEditForm(woId, project){
   await loadWODetail(woId, project.id);
   if(!state.woDetail) return;
-  const ownQty = {};
-  state.newWOLines = (state.woDetail.ra_wo_line_items || []).map(l => {
-    if(l.estimated_qty) ownQty[l.budget_item_id] = (ownQty[l.budget_item_id] || 0) + Number(l.estimated_qty);
-    return { existingId: l.id, budget_item_id: l.budget_item_id, agreed_rate: l.agreed_rate, estimated_qty: l.estimated_qty, scope_description: l.scope_description };
+  state.newWOLines = (state.woDetail.ra_wo_line_items || []).slice().sort((a,b) => (a.sl_no||0) - (b.sl_no||0)).map(l => {
+    const it = woLineItem(l);
+    return { existingId: l.id, budget_item_id: l.budget_item_id || null, description: it.description || '', unit: it.unit || 'P.sft', activity: l.activity || '', activityManual: !!l.activity, agreed_rate: l.agreed_rate, estimated_qty: l.estimated_qty, scope_description: l.scope_description };
   });
-  state.editingWOOwnQty = ownQty;
+  state.editingWOOwnQty = {};
   state.editingWOOriginalLineIds = new Set((state.woDetail.ra_wo_line_items || []).map(l => l.id));
   state.editingWOId = woId;
   state.addingWOLine = false;
@@ -4414,12 +4421,14 @@ async function reconcileWOLineItems(woId, currentLines, originalIds){
     for(const line of currentLines){
       if(line.existingId){
         const { error } = await sb.from('ra_wo_line_items').update({
+          description: (line.description||'').trim() || null, unit: line.unit || null, activity: line.activity || null,
           agreed_rate: line.agreed_rate, estimated_qty: line.estimated_qty, scope_description: line.scope_description || null
         }).eq('id', line.existingId);
         if(error){ toast(error.message, true); return false; }
       } else {
         const { error } = await sb.from('ra_wo_line_items').insert({
-          wo_id: woId, budget_item_id: line.budget_item_id, sl_no: 999,
+          wo_id: woId, budget_item_id: line.budget_item_id || null, sl_no: 999,
+          description: (line.description||'').trim() || null, unit: line.unit || null, activity: line.activity || null,
           agreed_rate: line.agreed_rate, estimated_qty: line.estimated_qty, scope_description: line.scope_description || null
         });
         if(error){ toast(error.message, true); return false; }
@@ -4449,7 +4458,7 @@ async function createWorkOrder(payload){
 
 async function createWOLineItems(wo_id, lines){
   try{
-    const rows = lines.map((l, idx) => ({ wo_id, budget_item_id: l.budget_item_id, sl_no: idx+1, agreed_rate: l.agreed_rate, scope_description: l.scope_description || null, estimated_qty: l.estimated_qty || null }));
+    const rows = lines.map((l, idx) => ({ wo_id, budget_item_id: l.budget_item_id || null, description: (l.description||'').trim() || null, unit: l.unit || null, activity: l.activity || null, sl_no: idx+1, agreed_rate: l.agreed_rate, scope_description: l.scope_description || null, estimated_qty: l.estimated_qty || null }));
     const { error } = await withRetry(() => sb.from('ra_wo_line_items').insert(rows));
     if(error){ toast(error.message, true); return false; }
     return true;
@@ -4544,7 +4553,7 @@ async function printWorkOrder(woId, project){
     const lines = wo.ra_wo_line_items || [];
     let total = 0;
     const rows = lines.map((l, idx) => {
-      const item = l.ra_budget_items || {};
+      const item = woLineItem(l);
       const amount = (l.estimated_qty && l.agreed_rate) ? l.estimated_qty * l.agreed_rate : null;
       if(amount) total += amount;
       return `
