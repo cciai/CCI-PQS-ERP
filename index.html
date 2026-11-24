@@ -2193,9 +2193,9 @@ async function dsOcr(file, onProg){
   const { data } = await T.recognize(canvas, 'eng', { logger: m => { if(onProg && m.status === 'recognizing text') onProg(Math.round(m.progress * 100)); } });
   return data.text || '';
 }
-function dsSetField(id, val, note){
+function dsSetField(id, val, onlyIfEmpty){
   const el = document.getElementById(id); if(!el || !val) return false;
-  if(el.value && el.dataset.auto !== '1') return false; // never overwrite what a person typed
+  if(el.value && (el.dataset.auto !== '1' || onlyIfEmpty)) return false; // never overwrite what a person typed; Aadhaar/bank never override a PAN-read name
   el.value = val; el.dataset.auto = '1';
   el.style.boxShadow = '0 0 0 2px rgba(63,143,99,0.55)'; el.title = 'Auto-filled from document — please verify';
   el.addEventListener('input', () => { el.dataset.auto = '0'; el.style.boxShadow = ''; }, { once: true });
@@ -2234,9 +2234,9 @@ function dsWireDocScan(){
           const r = kind === 'aadhaar' ? dsParseAadhaar(text) : kind === 'pan' ? dsParsePan(text) : dsParseBank(text);
           const found = [];
           const set = (id, v, label) => { if(dsSetField(id, v)) found.push(label); };
-          if(kind === 'aadhaar'){ set('scAadhar', r.aadhar, 'Aadhaar no.'); set('scName', r.name, 'name'); set('scAddress', r.address, 'address'); if(r.state && dsSetField('scState', r.state)) found.push('state'); }
+          if(kind === 'aadhaar'){ set('scAadhar', r.aadhar, 'Aadhaar no.'); if(dsSetField('scName', r.name, true)) found.push('name (use PAN to confirm)'); set('scAddress', r.address, 'address'); if(r.state && dsSetField('scState', r.state)) found.push('state'); }
           if(kind === 'pan'){ set('scPan', r.pan_no, 'PAN'); set('scNamePan', r.name_as_per_pan, 'name as per PAN'); set('scName', r.name_as_per_pan ? dsTitle(r.name_as_per_pan) : '', 'name'); }
-          if(kind === 'bank'){ set('scBankAcct', r.bank_account_no, 'account no.'); set('scIfsc', r.ifsc, 'IFSC'); set('scBankName', r.bank_name, 'bank'); set('scName', r.holder, 'name'); }
+          if(kind === 'bank'){ set('scBankAcct', r.bank_account_no, 'account no.'); set('scIfsc', r.ifsc, 'IFSC'); set('scBankName', r.bank_name, 'bank'); }
           results[rk] = { found, warn: r.warn };
         } catch(err){ results[rk] = { err: err.message || String(err) }; console.error(err); }
         render();
