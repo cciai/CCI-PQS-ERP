@@ -2212,20 +2212,36 @@ function dsWireDocScan(){
   };
   box.querySelectorAll('input[type=file]').forEach(inp => {
     inp.addEventListener('change', async () => {
-      const f = inp.files && inp.files[0]; if(!f) return; const kind = inp.dataset.kind;
-      results[kind] = { busy: true, pct: 0 }; render();
-      try{
-        dsCompress(f).then(b => { state.dsBlobs[kind] = b; }).catch(e => console.error(e));
-        const text = await dsOcr(f, p => { results[kind].pct = p; render(); });
-        const r = kind === 'aadhaar' ? dsParseAadhaar(text) : kind === 'pan' ? dsParsePan(text) : dsParseBank(text);
-        const found = [];
-        const set = (id, v, label) => { if(dsSetField(id, v)) found.push(label); };
-        if(kind === 'aadhaar'){ set('scAadhar', r.aadhar, 'Aadhaar no.'); set('scName', r.name, 'name'); set('scAddress', r.address, 'address'); if(r.state && dsSetField('scState', r.state)) found.push('state'); }
-        if(kind === 'pan'){ set('scPan', r.pan_no, 'PAN'); set('scNamePan', r.name_as_per_pan, 'name as per PAN'); set('scName', r.name_as_per_pan ? dsTitle(r.name_as_per_pan) : '', 'name'); }
-        if(kind === 'bank'){ set('scBankAcct', r.bank_account_no, 'account no.'); set('scIfsc', r.ifsc, 'IFSC'); set('scBankName', r.bank_name, 'bank'); set('scName', r.holder, 'name'); }
-        results[kind] = { found, warn: r.warn };
-      } catch(err){ results[kind] = { err: err.message || String(err) }; console.error(err); }
-      render(); inp.value = '';
+      let files = [...(inp.files || [])]; if(!files.length) return; const kind = inp.dataset.kind;
+      if(kind === 'aadhaar' && files.length > 2){ toast('Only the first 2 images (front and back) are used.', true); files = files.slice(0, 2); }
+      const sides = [];
+      for(let n = 0; n < files.length; n++){
+        const f = files[n], rk = kind === 'aadhaar' ? 'aadhaar_' + n : kind;
+        kinds[rk] = kind === 'aadhaar' ? `Aadhaar card — image ${n+1}` : kinds[kind];
+        results[rk] = { busy: true, pct: 0 }; render();
+        try{
+          const blobP = dsCompress(f);
+          const text = await dsOcr(f, p => { results[rk].pct = p; render(); });
+          let store = kind;
+          if(kind === 'aadhaar'){
+            const looksBack = /address|(^|\n)\s*(s\/o|c\/o|d\/o|w\/o)\b/i.test(text) && !/(dob|date of birth|year of birth)/i.test(text);
+            store = looksBack ? 'aadhaar_back' : 'aadhaar';
+            if(sides.includes(store)) store = store === 'aadhaar' ? 'aadhaar_back' : 'aadhaar';
+            sides.push(store);
+            kinds[rk] = `Aadhaar card — ${store === 'aadhaar' ? 'front' : 'back'}`;
+          }
+          blobP.then(b => { state.dsBlobs[store] = b; }).catch(e => console.error(e));
+          const r = kind === 'aadhaar' ? dsParseAadhaar(text) : kind === 'pan' ? dsParsePan(text) : dsParseBank(text);
+          const found = [];
+          const set = (id, v, label) => { if(dsSetField(id, v)) found.push(label); };
+          if(kind === 'aadhaar'){ set('scAadhar', r.aadhar, 'Aadhaar no.'); set('scName', r.name, 'name'); set('scAddress', r.address, 'address'); if(r.state && dsSetField('scState', r.state)) found.push('state'); }
+          if(kind === 'pan'){ set('scPan', r.pan_no, 'PAN'); set('scNamePan', r.name_as_per_pan, 'name as per PAN'); set('scName', r.name_as_per_pan ? dsTitle(r.name_as_per_pan) : '', 'name'); }
+          if(kind === 'bank'){ set('scBankAcct', r.bank_account_no, 'account no.'); set('scIfsc', r.ifsc, 'IFSC'); set('scBankName', r.bank_name, 'bank'); set('scName', r.holder, 'name'); }
+          results[rk] = { found, warn: r.warn };
+        } catch(err){ results[rk] = { err: err.message || String(err) }; console.error(err); }
+        render();
+      }
+      inp.value = '';
     });
   });
 }
@@ -2257,7 +2273,7 @@ async function dsUploadDocs(scId){
   state.dsBlobs = {};
   if(okN) toast(`${okN} document${okN>1?'s':''} stored (compressed).`);
 }
-const DS_KIND_LBL = { aadhaar: 'Aadhaar', pan: 'PAN', bank: 'Bank doc' };
+const DS_KIND_LBL = { aadhaar: 'Aadhaar front', aadhaar_back: 'Aadhaar back', pan: 'PAN', bank: 'Bank doc' };
 async function dsShowDocs(sc, el){
   if(!el) return;
   try{
@@ -2277,11 +2293,11 @@ function dsBoxHtml(){
   state.dsBlobs = {};
   const slot = (k, label, hint) => `<label style="flex:1;min-width:190px;border:1.5px dashed var(--paper-line);border-radius:10px;padding:12px;cursor:pointer;background:#fff;display:block;">
     <div style="font-weight:600;font-size:14px;">${label}</div><div style="font-size:12px;color:#8B8676;margin:2px 0 8px;">${hint}</div>
-    <input type="file" accept="image/*" data-kind="${k}" style="font-size:12px;max-width:100%;"></label>`;
+    <input type="file" accept="image/*" ${k==='aadhaar'?'multiple':''} data-kind="${k}" style="font-size:12px;max-width:100%;"></label>`;
   return `<div id="dsBox" style="background:var(--paper-2,#F2EFE8);border:1px solid var(--paper-line);border-radius:12px;padding:14px;margin-bottom:18px;">
     <div style="font-weight:700;font-size:15px;">⚡ Quick add from documents</div>
     <div style="font-size:12.5px;color:#6B6757;margin:3px 0 10px;">Upload or photograph the documents — CAMELS reads them and fills the form below. Review the green-highlighted fields, then create. Photos are compressed and stored privately (owner, PM and QS can view them).</div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;">${slot('aadhaar','Aadhaar card','Front side (number + name); back side for address')}${slot('pan','PAN card','Clear photo of the front')}${slot('bank','Bank passbook / cheque','First page or cancelled cheque leaf')}</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">${slot('aadhaar','Aadhaar card (2 images)','Select both images together: front (number, name) and back (address)')}${slot('pan','PAN card','Clear photo of the front')}${slot('bank','Bank passbook / cheque','First page or cancelled cheque leaf')}</div>
     <div id="dsResults"></div></div>`;
 }
 
