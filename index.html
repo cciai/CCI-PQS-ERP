@@ -676,7 +676,7 @@ function buildWOTerms(o){
   let n = 0; const H = t => `\n${++n}. ${t}\n`;
   let t = 'GENERAL TERMS & CONDITIONS\n';
   t += H('CONTRACT DOCUMENTS & INTERPRETATION');
-  t += `1.1 This Work Order, its scope schedule (line items with quantity and rate), these terms, the approved drawings, specifications, BOQ and written site instructions together form the contract. In case of conflict the order of precedence is: this Work Order → approved drawings → specifications → site instructions.\n1.2 "Contractor" means Cameo Constructions and Infrastructure (CCI). "Subcontractor" means the party named in this Work Order. "Engineer" means the Contractor's authorised site engineer / QS / PM.\n1.3 The Subcontractor confirms that it has visited the site, studied the drawings and scope and accepts the rates as full compensation for the work described.\n`;
+  t += `1.1 This Work Order, its scope schedule (line items with quantity and rate), these terms, the approved drawings, specifications, BOQ and written site instructions together form the contract. In case of conflict the order of precedence is: this Work Order → approved drawings → specifications → site instructions.\n1.2 "Contractor" means Cameo Constructions and Infrastructure (CCI). "Subcontractor" means the party named in this Work Order. "Engineer" means the Contractor's authorised site engineer / QS / PM.\n1.3 The Subcontractor confirms that it has visited the site, studied the drawings and scope and accepts the rates as full compensation for the work described.\n1.4 This Work Order is not valid unless signed by an authorised CCI Representative and stamped with the Company seal. No work shall be started, and no bill shall be entertained, against an unsigned or unsealed Work Order.\n`;
   t += H('SCOPE OF WORK');
   t += `2.1 The scope is the work described in the line items, completed in all respects as per drawings, specifications and the Engineer's instructions, including all incidental work necessary for a complete, functional and defect-free result, even if not expressly mentioned.\n2.2 Any work outside the scope shall be executed only on written instruction of the Engineer and at rates agreed in writing in advance. Work done without written instruction shall not be paid.\n2.3 The Subcontractor shall not sublet or assign any part of the work without the Contractor's prior written consent.\n`;
   t += H('RATES & MEASUREMENT');
@@ -4747,6 +4747,7 @@ async function printWorkOrder(woId, project){
         <h3 class="section">Terms &amp; Conditions</h3>
         <div class="wo-doc-terms">${escapeHtml(wo.terms_and_conditions || '')}</div>
 
+        <div style="margin-top:18px;font-weight:700;font-size:12.5px;">This Work Order is not valid unless signed by a CCI Representative with the Company seal.</div>
         <div class="wo-doc-sign">
           <div>Signature — Cameo Constructions &amp; Infrastructure</div>
           <div>Signature — Subcontractor</div>
