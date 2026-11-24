@@ -429,6 +429,13 @@
     font-family:'Barlow',sans-serif; font-size:10px; font-weight:700; letter-spacing:.12em; color:#1B3A6B;
   }
 
+  /* Black & white printing: everything solid black, no grey/blue text, no shaded fills */
+  #printArea, #printArea *{ color:#000 !important; border-color:#000 !important; text-shadow:none !important; }
+  #printArea .wo-doc-table th, #printArea .wo-doc-total-row td, #printArea .wo-doc-table td{ background:#fff !important; }
+  #printArea .wo-doc-table th{ font-weight:700; }
+  #printArea .wo-doc-meta{ border-bottom-color:#000 !important; }
+  #printArea .wo-doc-footer-safety{ border-top-color:#000 !important; }
+  #printArea *{ opacity:1 !important; filter:grayscale(1) contrast(1.4); }
   @media print{
     body *{ visibility:hidden; }
     #printArea, #printArea *{ visibility:visible; }
@@ -440,8 +447,8 @@
        since the in-document footer above still shows once regardless. */
     @page{
       margin: 16mm 14mm 20mm 14mm;
-      @bottom-left{ content: "Page " counter(page) " of " counter(pages); font-family:'Barlow',sans-serif; font-size:8.5px; color:#999; }
-      @bottom-center{ content: "MAKE SAFETY PERSONAL"; font-family:'Barlow',sans-serif; font-size:8.5px; font-weight:700; letter-spacing:.12em; color:#1B3A6B; }
+      @bottom-left{ content: "Page " counter(page) " of " counter(pages); font-family:'Barlow',sans-serif; font-size:8.5px; color:#000; }
+      @bottom-center{ content: "MAKE SAFETY PERSONAL"; font-family:'Barlow',sans-serif; font-size:8.5px; font-weight:700; letter-spacing:.12em; color:#000; }
     }
   }
 </style>
