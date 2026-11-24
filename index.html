@@ -715,6 +715,7 @@ function buildWOTerms(o){
 }
 
 /* A WO line's own description/unit (standalone WOs); falls back to the linked budget item for legacy lines */
+const woScopeLines = (wo) => ((wo && wo.ra_wo_line_items) || []).filter(l => l.activity !== 'lumpsum');
 function woLineItem(l){ const b = (l && l.ra_budget_items) || {}; return { ...b, description: (l && l.description) || b.description || '', unit: (l && l.unit) || b.unit || '' }; }
 function matchUnit(raw){
   if(!raw) return null;
@@ -2623,7 +2624,7 @@ function renderWODetail(project){
   }
 
   const sc = wo.ra_subcontractors || {};
-  const lines = wo.ra_wo_line_items || [];
+  const lines = woScopeLines(wo);
 
   tabContent.innerHTML = `
     <button class="btn tiny" id="backToWOList" style="margin-bottom:14px;">← Back to Work Orders</button>
@@ -2741,11 +2742,85 @@ async function loadBillEntry(billId, woId){
   } catch(err){ toast('Could not load the bill — please try again.', true); console.error(err); }
 }
 
+/* ---------- Lump-sum billing (e.g. Amara Aanya): bills carry a floor + Structure/Finishing + rupee amount only,
+   tracked against the full billable budget value. Qty / rate on the WO are ignored. ---------- */
+const lsIs = (project) => !!(project && project.lumpsum_billing);
+const lsRoot = (stage) => { let cur = stage; while(cur && cur.parent_stage_id) cur = state.stages.find(s => s.id === cur.parent_stage_id); return cur; };
+const lsCat = (stage) => { const r = lsRoot(stage); return (r && /finish/i.test(r.name)) ? 'finishing' : 'structure'; };
+function lsInfo(){
+  const val = {}; (state.budgetItems || []).forEach(b => { val[b.stage_id] = (val[b.stage_id] || 0) + Number(b.budgeted_qty || 0) * Number(b.budgeted_rate || 0); });
+  const floors = { structure: [], finishing: [] }, total = { structure: 0, finishing: 0 };
+  (state.stages || []).filter(s => s.parent_stage_id && val[s.id] !== undefined).forEach(s => {
+    const c = lsCat(s); const r = lsRoot(s);
+    floors[c].push({ id: s.id, name: s.name, value: val[s.id], rootSeq: r ? r.sequence : 0, seq: s.sequence }); total[c] += val[s.id];
+  });
+  Object.values(floors).forEach(a => a.sort((x, y) => x.rootSeq - y.rootSeq || x.seq - y.seq));
+  const items = {}; (state.budgetItems || []).forEach(b => { (items[b.stage_id] = items[b.stage_id] || []).push({ id: b.id, name: b.description, unit: b.unit, value: Number(b.budgeted_qty || 0) * Number(b.budgeted_rate || 0) }); });
+  return { floors, total, grand: total.structure + total.finishing, items };
+}
+async function lsLoadOthers(project, excludeBillId){
+  let q = sb.from('ra_bill_line_entries')
+    .select('bill_id, this_qty, ra_bills!inner(status, deleted_at), ra_wo_line_items!inner(agreed_rate, work_type, floor_stage_id, ref_budget_item_id, ra_work_orders!inner(project_id))')
+    .eq('ra_wo_line_items.ra_work_orders.project_id', project.id).in('ra_bills.status', ['submitted','approved','paid']).is('ra_bills.deleted_at', null).range(0, 4999);
+  if(excludeBillId) q = q.neq('bill_id', excludeBillId);
+  const { data, error } = await withRetry(() => q);
+  if(error){ console.error(error); return { structure: 0, finishing: 0, byFloor: {}, byItem: {} }; }
+  const out = { structure: 0, finishing: 0, byFloor: {}, byItem: {} };
+  (data || []).forEach(e => {
+    const amt = Number(e.this_qty || 0) * Number(e.ra_wo_line_items.agreed_rate || 0);
+    const c = e.ra_wo_line_items.work_type === 'finishing' ? 'finishing' : 'structure';
+    out[c] += amt; const f = e.ra_wo_line_items.floor_stage_id; if(f) out.byFloor[f] = (out.byFloor[f] || 0) + amt;
+    const it = e.ra_wo_line_items.ref_budget_item_id; if(it) out.byItem[it] = (out.byItem[it] || 0) + amt;
+  });
+  return out;
+}
+const lsInr = (n) => '₹' + fmtNum(Math.round(n * 100) / 100);
+function lsTrackHtml(info, others, mine){
+  const billed = { structure: others.structure + mine.structure, finishing: others.finishing + mine.finishing };
+  const totalBilled = billed.structure + billed.finishing, remaining = info.grand - totalBilled, pct = info.grand ? totalBilled / info.grand * 100 : 0;
+  const over = remaining < -0.5;
+  const row = (lbl, b, t) => `<div style="display:flex;justify-content:space-between;font-size:12.5px;margin-top:4px;"><span>${lbl}</span><span>${lsInr(b)} of ${lsInr(t)} <span style="color:#8B8676;">(${t ? (b/t*100).toFixed(1) : 0}%)</span></span></div>`;
+  return `<div style="border:1px solid var(--paper-line);border-radius:10px;padding:12px 14px;background:${over?'rgba(193,69,58,0.06)':'#fff'};margin-bottom:14px;">
+    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+      <div><div class="qv-label">Full billable budget</div><div style="font-size:20px;font-weight:700;">${lsInr(info.grand)}</div></div>
+      <div><div class="qv-label">Billed (incl. this bill)</div><div style="font-size:20px;font-weight:700;">${lsInr(totalBilled)}</div></div>
+      <div><div class="qv-label">${over ? 'Over budget by' : 'Remaining'}</div><div style="font-size:20px;font-weight:700;color:${over?'var(--red)':'var(--green)'};">${lsInr(Math.abs(remaining))}</div></div>
+    </div>
+    <div style="height:8px;background:#EDE9DF;border-radius:6px;margin:10px 0 6px;overflow:hidden;"><div style="height:100%;width:${Math.min(100, pct)}%;background:${over?'var(--red)':'var(--amber)'};"></div></div>
+    <div style="font-size:12px;color:#6B6757;">${pct.toFixed(1)}% of the full budget billed — quantities and rates on the Work Order are ignored for this project.</div>
+    ${row('Structure', billed.structure, info.total.structure)}${row('Finishes', billed.finishing, info.total.finishing)}
+    ${over ? `<div style="color:var(--red);font-size:12.5px;margin-top:6px;font-weight:600;">⚠ Total billing is above the full budget value.</div>` : ''}
+  </div>`;
+}
+async function lsAddItemLine(project, wo, category, stageId, itemId){
+  const st = state.stages.find(s => s.id === stageId), bi = state.budgetItems.find(b => b.id === itemId); if(!st || !bi) return null;
+  let line = (wo.ra_wo_line_items || []).find(l => l.activity === 'lumpsum' && l.ref_budget_item_id === itemId);
+  if(line) return line;
+  const { data, error } = await withRetry(() => sb.from('ra_wo_line_items').insert({
+    wo_id: wo.id, budget_item_id: null, sl_no: 900 + (wo.ra_wo_line_items || []).length, description: `${bi.description} – ${st.name}`, unit: 'Rs',
+    activity: 'lumpsum', agreed_rate: 1, estimated_qty: null, floor_stage_id: stageId, work_type: category, ref_budget_item_id: itemId }).select().single());
+  if(error){ toast(error.message, true); return null; }
+  (wo.ra_wo_line_items = wo.ra_wo_line_items || []).push(data);
+  return data;
+}
+function lsAddBarHtml(info){
+  return `<div style="border:1px dashed var(--paper-line);border-radius:10px;padding:10px 12px;margin-bottom:12px;background:#FBFAF6;">
+    <div style="font-weight:600;font-size:13.5px;margin-bottom:6px;">Add an item to this bill <span style="font-weight:400;color:#6B6757;">(Structure / Finishes → floor → budget item)</span></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+      <select id="lsCat"><option value="structure">Structure</option><option value="finishing">Finishes</option></select>
+      <select id="lsFloor" style="min-width:160px;"></select>
+      <select id="lsItem" style="min-width:200px;"></select>
+      <button class="btn tiny primary" id="lsAddBtn">+ Add item</button>
+      <span id="lsFloorInfo" style="font-size:12px;color:#6B6757;"></span>
+    </div></div>`;
+}
+
 function renderBillEntry(project){
   const tabContent = document.getElementById('tabContent');
   const wo = state.woDetail;
   const bill = state._currentBill;
-  const lines = wo.ra_wo_line_items || [];
+  const LS = lsIs(project);
+  const lines = (wo.ra_wo_line_items || []).filter(l => LS ? l.activity === 'lumpsum' : l.activity !== 'lumpsum').sort((a,b) => (a.sl_no||0) - (b.sl_no||0));
   const isDraft = bill.status === 'draft';
   // Editable through "submitted" too — locked only once approved or paid. Every
   // edit while submitted still re-validates against the budget cap live (the
@@ -2773,7 +2848,7 @@ function renderBillEntry(project){
       <div class="bitem" style="grid-template-columns:1fr 60px 80px 90px 90px 90px 110px;">
         <span class="desc">${escapeHtml(item.description||'')}${lineLocked ? ` <span class="lock-badge lock-badge-own" title="${escapeHtml(lockTitle)}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Locked</span>` : ''}<div class="wo-line-path">${escapeHtml(getStagePath(item.stage_id))}</div></span>
         <span class="unit">${escapeHtml(item.unit||'')}</span>
-        <span class="rate">₹${fmtNum(rate)}</span>
+        <span class="rate">${l.activity==='lumpsum' ? '—' : '₹'+fmtNum(rate)}</span>
         <span class="qty">${fmtNum(prevQty)}</span>
         <span>${isEditable && !lineLocked ? `<input type="number" inputmode="decimal" step="0.001" class="bill-line-qty" data-line="${l.id}" data-rate="${rate}" value="${thisQty||''}" placeholder="0">` : `<span class="qty">${fmtNum(thisQty)}</span>`}</span>
         <span class="qty">${fmtNum(cumQty)}</span>
@@ -2807,10 +2882,11 @@ function renderBillEntry(project){
       ${isFinalized ? `<div class="locked-note"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Finalized by Accounts on ${new Date(bill.finalized_at).toLocaleDateString('en-IN')} — this bill is now permanently locked. No edits or deletion, by anyone, including Owner.</div>` : ''}
       ${bill.rejection_reason ? `<div class="locked-note" style="color:var(--red);border-color:rgba(193,69,58,0.35);background:rgba(193,69,58,0.08);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg> Rejected: ${escapeHtml(bill.rejection_reason)}</div>` : ''}
 
+      ${LS ? `<div id="lsTrack"></div>${isEditable ? lsAddBarHtml() : ''}<div class="wo-rate-note" style="margin-bottom:8px;">Lump-sum billing — enter the <b>amount in ₹</b> for each floor. Quantity and rate are not used.</div>` : ''}
       <div class="bitem-head" style="grid-template-columns:1fr 60px 80px 90px 90px 90px 110px;">
-        <span>Item</span><span>Unit</span><span class="rate">Rate</span><span class="qty">Previous</span><span class="qty">This Bill</span><span class="qty">Cumulative</span><span class="amount">This Amount</span>
+        <span>${LS ? 'Item – floor' : 'Item'}</span><span>Unit</span><span class="rate">${LS ? '' : 'Rate'}</span><span class="qty">${LS ? 'Previous ₹' : 'Previous'}</span><span class="qty">${LS ? 'This bill ₹' : 'This Bill'}</span><span class="qty">${LS ? 'Cumulative ₹' : 'Cumulative'}</span><span class="amount">This Amount</span>
       </div>
-      <div id="billRows">${rowsHtml}</div>
+      <div id="billRows">${rowsHtml}${LS && !lines.length ? '<div class="wo-lines-empty">No items added yet — choose category, floor and item above.</div>' : ''}</div>
 
 
 <h4 class="wo-lines-title">Debit / Recovery (optional)</h4>
@@ -2905,8 +2981,35 @@ function renderBillEntry(project){
     document.getElementById('billGstPct').textContent = gstPctNow;
     document.getElementById('billGst').textContent = '+ ₹'+fmtNum(gst);
     document.getElementById('billNet').textContent = '₹'+fmtNum(st - ret - tds - saf - deb + gst);
+    if(LS) lsUpdateTrack();
   };
   document.querySelectorAll('.bill-line-qty').forEach(inp => inp.addEventListener('input', recompute));
+  // ---- lump-sum extras: tracking panel + add-floor bar ----
+  let lsOthers = null; const lsInfoNow = LS ? lsInfo() : null;
+  const lsMine = () => { const m = { structure: 0, finishing: 0 }; document.querySelectorAll('.bill-line-qty').forEach(inp => { const l = lines.find(x => x.id === inp.dataset.line); const c = l && l.work_type === 'finishing' ? 'finishing' : 'structure'; m[c] += parseFloat(inp.value) || 0; });
+    if(!document.querySelectorAll('.bill-line-qty').length) state.billLines.forEach(e => { const l = lines.find(x => x.id === e.wo_line_item_id); if(l) m[l.work_type === 'finishing' ? 'finishing' : 'structure'] += Number(e.this_qty || 0); }); return m; };
+  const lsUpdateTrack = () => { const el = document.getElementById('lsTrack'); if(!el || !lsOthers) return; const mine = lsMine(); el.innerHTML = lsTrackHtml(lsInfoNow, lsOthers, mine); state.lsOver = (lsOthers.structure + lsOthers.finishing + mine.structure + mine.finishing) - lsInfoNow.grand > 0.5; };
+  if(LS){
+    lsLoadOthers(project, bill.id).then(o => { lsOthers = o; lsUpdateTrack(); updFloorInfo(); });
+    const catSel = document.getElementById('lsCat'), floorSel = document.getElementById('lsFloor'), itemSel = document.getElementById('lsItem');
+    const fillFloors = () => { if(!catSel) return; floorSel.innerHTML = lsInfoNow.floors[catSel.value].map(f => `<option value="${f.id}">${escapeHtml(f.name)}</option>`).join(''); fillItems(); };
+    function fillItems(){ const its = lsInfoNow.items[floorSel.value] || []; itemSel.innerHTML = its.map(i => `<option value="${i.id}">${escapeHtml(i.name)}</option>`).join(''); updFloorInfo(); }
+    function updFloorInfo(){ const el = document.getElementById('lsFloorInfo'); if(!el || !floorSel || !lsOthers) return; const f = lsInfoNow.floors[catSel.value].find(x => x.id === floorSel.value); const it = (lsInfoNow.items[floorSel.value] || []).find(x => x.id === itemSel.value);
+      el.textContent = (f ? `Floor budget ${lsInr(f.value)} · billed ${lsInr(lsOthers.byFloor[f.id] || 0)}` : '') + (it ? ` | ${it.name}: budget ${lsInr(it.value)} · billed ${lsInr(lsOthers.byItem[it.id] || 0)}` : ''); }
+    if(catSel){
+      fillFloors(); catSel.addEventListener('change', fillFloors); floorSel.addEventListener('change', fillItems); itemSel.addEventListener('change', updFloorInfo);
+      document.getElementById('lsAddBtn').onclick = async () => {
+        if(!floorSel.value || !itemSel.value){ toast('Pick a floor and an item.', true); return; }
+        const typed = {}; document.querySelectorAll('.bill-line-qty').forEach(inp => { typed[inp.dataset.line] = inp.value; });
+        const typedDebit = document.getElementById('billDebitAmount') ? document.getElementById('billDebitAmount').value : '';
+        const line = await lsAddItemLine(project, wo, catSel.value, floorSel.value, itemSel.value); if(!line) return;
+        await loadBillEntry(bill.id, wo.id); renderMain();
+        document.querySelectorAll('.bill-line-qty').forEach(inp => { if(typed[inp.dataset.line] !== undefined) inp.value = typed[inp.dataset.line]; });
+        const di = document.getElementById('billDebitAmount'); if(di && typedDebit) di.value = typedDebit;
+        const ni = document.querySelector(`.bill-line-qty[data-line="${line.id}"]`); if(ni){ ni.dispatchEvent(new Event('input', { bubbles: true })); ni.focus(); }
+      };
+    }
+  }
   const debitInput = document.getElementById('billDebitAmount');
   if(debitInput) debitInput.addEventListener('input', recompute);
   const gstSelectEl = document.getElementById('billGstSelect');
@@ -2915,7 +3018,7 @@ function renderBillEntry(project){
   const saveBtn = document.getElementById('saveDraftBtn');
   if(saveBtn) saveBtn.onclick = () => saveBillLines(bill.id, false);
   const submitBtn = document.getElementById('submitBillBtn');
-  if(submitBtn) submitBtn.onclick = () => saveBillLines(bill.id, true);
+  if(submitBtn) submitBtn.onclick = () => { if(LS && state.lsOver && !confirm('This bill takes total billing ABOVE the full budget value. Submit anyway?')) return; saveBillLines(bill.id, true); };
   const saveChangesBtn = document.getElementById('saveChangesBtn');
   if(saveChangesBtn) saveChangesBtn.onclick = () => saveBillLines(bill.id, false);
   const approveBtn = document.getElementById('approveBillBtn');
@@ -2970,7 +3073,7 @@ function printBill(bill, wo, lines, subTotal, retentionAmt, tdsAmt, safetyAmt, d
       <td>${idx+1}</td>
       <td>${escapeHtml(item.description||'')}</td>
       <td class="num">${escapeHtml(item.unit||'')}</td>
-      <td class="num">${fmtNum(rate)}</td>
+      <td class="num">${l.activity==='lumpsum' ? '—' : fmtNum(rate)}</td>
       <td class="num">${fmtNum(prevQty)}</td>
       <td class="num">${fmtNum(prevQty*rate)}</td>
       <td class="num">${fmtNum(thisQty)}</td>
@@ -4020,7 +4123,7 @@ function renderWorkOrdersTab(project){
     <tbody>
       ${pageItems.map(wo => {
         const sc = wo.ra_subcontractors;
-        const lineCount = (wo.ra_wo_line_items || []).length;
+        const lineCount = woScopeLines(wo).length;
         return `
         <tr class="data-row" data-wo="${wo.id}">
           <td>#${wo.order_no}${wo.billing_locked ? ' <span class="lock-badge lock-badge-own" title="'+(wo.lock_reason?escapeHtml(wo.lock_reason):'Billing locked')+'"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span>' : ''}</td>
@@ -4371,12 +4474,12 @@ function renderNewWOForm(project, editingWOId){
 async function openWOEditForm(woId, project){
   await loadWODetail(woId, project.id);
   if(!state.woDetail) return;
-  state.newWOLines = (state.woDetail.ra_wo_line_items || []).slice().sort((a,b) => (a.sl_no||0) - (b.sl_no||0)).map(l => {
+  state.newWOLines = woScopeLines(state.woDetail).slice().sort((a,b) => (a.sl_no||0) - (b.sl_no||0)).map(l => {
     const it = woLineItem(l);
     return { existingId: l.id, budget_item_id: l.budget_item_id || null, description: it.description || '', unit: it.unit || 'P.sft', activity: l.activity || '', activityManual: !!l.activity, agreed_rate: l.agreed_rate, estimated_qty: l.estimated_qty, scope_description: l.scope_description };
   });
   state.editingWOOwnQty = {};
-  state.editingWOOriginalLineIds = new Set((state.woDetail.ra_wo_line_items || []).map(l => l.id));
+  state.editingWOOriginalLineIds = new Set(woScopeLines(state.woDetail).map(l => l.id));
   state.editingWOId = woId;
   state.addingWOLine = false;
   renderMain();
@@ -4550,7 +4653,7 @@ async function printWorkOrder(woId, project){
     if(error){ toast(error.message, true); return; }
 
     const sc = wo.ra_subcontractors || {};
-    const lines = wo.ra_wo_line_items || [];
+    const lines = woScopeLines(wo);
     let total = 0;
     const rows = lines.map((l, idx) => {
       const item = woLineItem(l);
