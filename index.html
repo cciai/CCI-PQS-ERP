@@ -4240,13 +4240,13 @@ function renderNewWOForm(project, editingWOId){
       <div id="woLinesTable"></div>
       <button class="btn tiny" id="addWOLineBtn" style="margin-top:8px;">+ Add line item</button>
 
+      <h4 class="wo-lines-title">Remarks / Special Notes</h4>
+      <div class="wo-rate-note">Type any important notes, payment terms or special clauses here. They are saved with the Work Order and printed under "Remarks / Special Notes". Optionally use the button to also write them into the Terms below.</div>
+      <div class="field"><textarea id="woRemarks" rows="5" style="width:100%;" placeholder="e.g. Payment within 7 days of bill approval, no advance. Retention released after 6 months. Penalty Rs 5,000 per day for delay beyond 30 June.">${escapeHtml(editing ? (editWO.remarks||'') : '')}</textarea></div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap;"><button type="button" class="btn tiny primary" id="woRemarksApply">Add to terms as Special Conditions</button><span id="woRemarksMsg" style="font-size:12px;color:#6B6757;"></span></div>
+
       <h4 class="wo-lines-title">Terms &amp; Conditions</h4>
       <div class="wo-rate-note">Built automatically from the retention / TDS / GST you set and the activities in your scope — full general conditions plus technical clauses for each activity. Edit freely; once you edit, it stops auto-updating (use Rebuild to regenerate). Prints exactly as written.</div>
-      <div class="field" style="border:1px solid var(--paper-line);border-radius:10px;padding:10px 12px;background:#FBFAF6;">
-        <label>Remarks / special instructions <span style="font-weight:400;color:#6B6757;">(AI writes these into the terms)</span></label>
-        <textarea id="woRemarks" rows="4" placeholder="Type in plain words, e.g. Payment within 7 days of bill approval, no advance. Retention released after 6 months. Subcontractor to arrange own accommodation. Penalty Rs 5,000 per day for delay beyond 30 June."></textarea>
-        <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap;"><button type="button" class="btn tiny primary" id="woRemarksApply">✨ Add to terms with AI</button><span id="woRemarksMsg" style="font-size:12px;color:#6B6757;">Changes existing clauses where they conflict; new points go under SPECIAL CONDITIONS. Review the result below before saving.</span></div>
-      </div>
       <div style="margin-bottom:6px;"><button type="button" class="btn tiny" id="woTermsRebuild">↻ Rebuild terms from scope</button></div>
       <div class="field"><textarea id="woTerms" rows="30" data-dirty="${editing && editWO.terms_and_conditions ? 1 : 0}">${escapeHtml(editing ? (editWO.terms_and_conditions||DEFAULT_WO_TERMS) : buildWOTerms({retention_pct:5,tds_pct:1,gst_pct:0}))}</textarea></div>
 
@@ -4404,7 +4404,7 @@ function renderNewWOForm(project, editingWOId){
     const ctx = { retention_pct: document.getElementById('woRetention').value, tds_pct: document.getElementById('woTds').value, gst_pct: document.getElementById('woGst').value, nature_of_work: document.getElementById('woNature').value, scope: (state.newWOLines || []).map(l => l.description).filter(Boolean) };
     let out = null, err = '';
     try{ const r = await sb.functions.invoke('wo-remarks', { body: { remarks, terms: termsEl.value, context: ctx } }); if(r.error) err = r.error.message || 'failed'; else if(r.data && r.data.terms) out = r.data.terms; else err = (r.data && r.data.error) || 'failed'; }catch(e){ err = e.message || 'failed'; }
-    if(out){ termsEl.value = out; termsEl.dataset.dirty = '1'; msg.textContent = '✓ Terms updated — please read through the result below (and any "NOTE FOR REVIEW" line) before saving.'; document.getElementById('woRemarks').value = ''; termsEl.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    if(out){ termsEl.value = out; termsEl.dataset.dirty = '1'; msg.textContent = '✓ Terms updated — please read through the result below (and any "NOTE FOR REVIEW" line) before saving.'; termsEl.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
     else {
       // Fallback without AI: append the remarks verbatim as numbered special conditions
       const nums = [...termsEl.value.matchAll(/^\s*(\d+)\.\s+[A-Z]/gm)].map(m => +m[1]); const n = (nums.length ? Math.max(...nums) : 0) + 1;
@@ -4451,7 +4451,8 @@ function renderNewWOForm(project, editingWOId){
 
     const saveBtn = document.getElementById(asDraft ? 'saveDraftBtn' : 'saveWOBtn');
     const btnLabel = saveBtn.textContent;
-    const payload = { wo_ref, wo_date, nature_of_work, retention_pct, tds_pct, safety_pct, safety_amount, gst_pct, terms_and_conditions };
+    const remarks = (document.getElementById('woRemarks').value || '').trim() || null;
+    const payload = { wo_ref, wo_date, nature_of_work, retention_pct, tds_pct, safety_pct, safety_amount, gst_pct, terms_and_conditions, remarks };
     if(asDraft) payload.status = 'draft';
     else if(editing && editWO.status==='draft') payload.status = 'active';   // finishing a draft makes it a live WO
 
@@ -4742,6 +4743,7 @@ async function printWorkOrder(woId, project){
           </tbody>
         </table>
 
+        ${wo.remarks ? `<h3 class="section">Remarks / Special Notes</h3><div class="wo-doc-terms">${escapeHtml(wo.remarks)}</div>` : ''}
         <h3 class="section">Terms &amp; Conditions</h3>
         <div class="wo-doc-terms">${escapeHtml(wo.terms_and_conditions || '')}</div>
 
