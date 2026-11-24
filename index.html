@@ -1960,12 +1960,14 @@ function openSubcontractorQuickView(sc){
     ${row('IFSC', sc.ifsc)}
     ${row('Bank name', sc.bank_name)}
     ${row('Address', sc.address)}
+    ${canManageSubcontractors() ? `<div class="qv-row"><span class="qv-label">Documents</span><span id="qvDocs" style="display:flex;gap:6px;flex-wrap:wrap;">loading…</span></div>` : ''}
     <div class="modal-actions">
       <button class="btn" onclick="closeModal()">Close</button>
       <button class="btn primary" id="qvLedgerBtn">📒 View Ledger</button>
       ${canManageSubcontractors() ? `<button class="btn primary" id="qvEditBtn">Edit</button>` : ''}
     </div>
   `);
+  dsShowDocs(sc, document.getElementById('qvDocs'));
   const editBtn = document.getElementById('qvEditBtn');
   if(editBtn) editBtn.onclick = () => { closeModal(); state.scEditingId = sc.id; state.scCreating = false; renderSubcontractorsView(); };
   const ledgerBtn = document.getElementById('qvLedgerBtn');
@@ -2109,6 +2111,180 @@ function renderSubcontractorLedger(){
   };
 }
 
+/* ---------- Subcontractor quick-add from documents (in-browser OCR; nothing is uploaded or stored) ---------- */
+const DS_BANKS = { SBIN:'State Bank of India', HDFC:'HDFC Bank', ICIC:'ICICI Bank', KVBL:'Karur Vysya Bank', IOBA:'Indian Overseas Bank', CNRB:'Canara Bank', UBIN:'Union Bank of India', BARB:'Bank of Baroda', PUNB:'Punjab National Bank', UTIB:'Axis Bank', IDIB:'Indian Bank', KKBK:'Kotak Mahindra Bank', YESB:'Yes Bank', IDFB:'IDFC First Bank', FDRL:'Federal Bank', SIBL:'South Indian Bank', CIUB:'City Union Bank', TMBL:'Tamilnad Mercantile Bank', BKID:'Bank of India', MAHB:'Bank of Maharashtra', CBIN:'Central Bank of India', UCBA:'UCO Bank', INDB:'IndusInd Bank', RATN:'RBL Bank', DLXB:'Dhanlaxmi Bank', IBKL:'IDBI Bank', ESFB:'Equitas Small Finance Bank', AUBL:'AU Small Finance Bank', PSIB:'Punjab & Sind Bank', IPOS:'India Post Payments Bank' };
+const dsVD = [[0,1,2,3,4,5,6,7,8,9],[1,2,3,4,0,6,7,8,9,5],[2,3,4,0,1,7,8,9,5,6],[3,4,0,1,2,8,9,5,6,7],[4,0,1,2,3,9,5,6,7,8],[5,9,8,7,6,0,4,3,2,1],[6,5,9,8,7,1,0,4,3,2],[7,6,5,9,8,2,1,0,4,3],[8,7,6,5,9,3,2,1,0,4],[9,8,7,6,5,4,3,2,1,0]];
+const dsVP = [[0,1,2,3,4,5,6,7,8,9],[1,5,7,6,2,8,3,0,9,4],[5,8,0,3,7,9,6,1,4,2],[8,9,1,6,0,4,3,5,2,7],[9,4,5,3,1,2,6,8,7,0],[4,2,8,6,5,7,3,9,0,1],[2,7,9,3,8,0,6,4,1,5],[7,0,4,6,9,1,3,2,5,8]];
+function dsVerhoeff(num){ let c = 0; const a = String(num).split('').reverse().map(Number); for(let i=0;i<a.length;i++) c = dsVD[c][dsVP[i%8][a[i]]]; return c === 0; }
+const dsTitle = s => String(s||'').toLowerCase().replace(/\b[a-z]/g, m => m.toUpperCase()).replace(/\s+/g,' ').trim();
+function dsLines(t){ return String(t||'').split(/\r?\n/).map(l => l.trim()).filter(Boolean); }
+
+function dsParseAadhaar(text){
+  const out = { warn: [] };
+  const t = String(text||'');
+  const cand = [...t.matchAll(/(?<!\d)([2-9]\d{3})[\s-]?(\d{4})[\s-]?(\d{4})(?!\d)/g)].map(m => m[1]+m[2]+m[3]);
+  const good = cand.find(dsVerhoeff);
+  if(good) out.aadhar = good.replace(/(\d{4})(\d{4})(\d{4})/, '$1 $2 $3');
+  else if(cand[0]){ out.aadhar = cand[0].replace(/(\d{4})(\d{4})(\d{4})/, '$1 $2 $3'); out.warn.push('Aadhaar number failed the checksum — please re-check the digits'); }
+  const L = dsLines(t);
+  const di = L.findIndex(l => /(dob|date of birth|year of birth|जन्म)/i.test(l));
+  if(di > 0){ for(let i = di-1; i >= Math.max(0, di-3); i--){ const l = L[i]; if(/^[A-Za-z][A-Za-z .]{3,40}$/.test(l) && !/government|india|aadhaar|authority|unique/i.test(l)){ out.name = dsTitle(l); break; } } }
+  const ai = L.findIndex(l => /^address\b|^(s\/o|c\/o|d\/o|w\/o)\b/i.test(l));
+  if(ai >= 0){
+    let a = L.slice(ai).join(', ').replace(/^address\s*:?\s*/i, '');
+    const pin = a.match(/(?<!\d)\d{6}(?!\d)/); if(pin) a = a.slice(0, a.indexOf(pin[0]) + 6);
+    out.address = a.replace(/^[,\s]+/, '').replace(/\s+,/g, ',').replace(/,\s*,/g, ',').slice(0, 300);
+    const st = INDIAN_STATES.find(s => new RegExp('\\b' + s.replace(/&/g,'(and|&)') + '\\b', 'i').test(a)); if(st) out.state = st;
+  }
+  return out;
+}
+function dsParsePan(text){
+  const out = { warn: [] };
+  const t = String(text||'').toUpperCase();
+  const m = t.replace(/[^A-Z0-9\n ]/g, '').match(/[A-Z]{5}[0-9]{4}[A-Z]/);
+  if(m){ out.pan_no = m[0]; if(!/^[A-Z]{3}[PCHFATBLJG]/.test(m[0])) out.warn.push('PAN format looks unusual — please verify'); }
+  const L = dsLines(text);
+  const ni = L.findIndex(l => /^(name|नाम)\b/i.test(l) && !/father|पिता/i.test(l));
+  if(ni >= 0){
+    const same = L[ni].replace(/^(name|नाम)\s*\/?\s*(name)?\s*:?\s*/i, '').trim();
+    const nxt = L[ni+1] || '';
+    const pick = /^[A-Za-z][A-Za-z .]{2,40}$/.test(same) ? same : (/^[A-Za-z][A-Za-z .]{2,40}$/.test(nxt) && !/father|date|birth|account/i.test(nxt) ? nxt : '');
+    if(pick) out.name_as_per_pan = pick.toUpperCase().replace(/\s+/g,' ').trim();
+  }
+  return out;
+}
+function dsParseBank(text){
+  const out = { warn: [] };
+  const t = String(text||'');
+  const up = t.toUpperCase();
+  const ifs = up.replace(/[^A-Z0-9\s]/g, ' ').match(/[A-Z]{4}\s?0\s?[A-Z0-9]{6}/);
+  if(ifs){ out.ifsc = ifs[0].replace(/\s/g,''); const b = DS_BANKS[out.ifsc.slice(0,4)]; if(b) out.bank_name = b; }
+  let acct = null;
+  const lab = t.match(/(?:a\s*\/?\s*c|acc(?:oun)?t)\s*(?:no\.?|number|#)?\s*[:\-.]?\s*(\d[\d\s]{7,22}\d)/i);
+  if(lab) acct = lab[1].replace(/\s/g,'');
+  if(!acct){ const runs = [...t.matchAll(/(?<!\d)\d{9,18}(?!\d)/g)].map(m => m[0]).filter(x => !(x.length === 12 && dsVerhoeff(x))); if(runs.length) acct = runs.sort((a,b) => b.length - a.length)[0]; }
+  if(acct){ if(acct.length >= 9 && acct.length <= 18) out.bank_account_no = acct; else out.warn.push('Account number length looks wrong — please check'); }
+  const hi = dsLines(t).findIndex(l => /(account holder|a\/c holder|customer name|^name\b)/i.test(l));
+  if(hi >= 0){ const l = dsLines(t)[hi].replace(/^.*?(account holder|a\/c holder|customer name|name)\s*[:\-]?\s*/i, '').trim(); if(/^[A-Za-z][A-Za-z .]{2,40}$/.test(l)) out.holder = dsTitle(l); }
+  if(!out.ifsc) out.warn.push('IFSC not found — upload a clearer passbook first page or cheque leaf');
+  return out;
+}
+let dsTessPromise = null;
+function dsLoadTesseract(){
+  if(window.Tesseract) return Promise.resolve(window.Tesseract);
+  if(dsTessPromise) return dsTessPromise;
+  dsTessPromise = new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'; s.onload = () => res(window.Tesseract); s.onerror = () => { dsTessPromise = null; rej(new Error('Could not load the text-reading engine — check the internet connection')); }; document.head.appendChild(s); });
+  return dsTessPromise;
+}
+async function dsPrepImage(file){
+  const url = URL.createObjectURL(file);
+  try{
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('Could not open the image')); i.src = url; });
+    const scale = Math.min(1, 2000 / Math.max(img.width, img.height));
+    const c = document.createElement('canvas'); c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+    const g = c.getContext('2d'); g.filter = 'grayscale(1) contrast(1.25)'; g.drawImage(img, 0, 0, c.width, c.height);
+    return c;
+  } finally { URL.revokeObjectURL(url); }
+}
+async function dsOcr(file, onProg){
+  if(!/^image\//.test(file.type)) throw new Error('Please upload a photo / image (JPG or PNG). For PDFs, take a screenshot or photo.');
+  const T = await dsLoadTesseract();
+  const canvas = await dsPrepImage(file);
+  const { data } = await T.recognize(canvas, 'eng', { logger: m => { if(onProg && m.status === 'recognizing text') onProg(Math.round(m.progress * 100)); } });
+  return data.text || '';
+}
+function dsSetField(id, val, note){
+  const el = document.getElementById(id); if(!el || !val) return false;
+  if(el.value && el.dataset.auto !== '1') return false; // never overwrite what a person typed
+  el.value = val; el.dataset.auto = '1';
+  el.style.boxShadow = '0 0 0 2px rgba(63,143,99,0.55)'; el.title = 'Auto-filled from document — please verify';
+  el.addEventListener('input', () => { el.dataset.auto = '0'; el.style.boxShadow = ''; }, { once: true });
+  return true;
+}
+function dsWireDocScan(){
+  const box = document.getElementById('dsBox'); if(!box) return;
+  const kinds = { aadhaar: 'Aadhaar card', pan: 'PAN card', bank: 'Bank passbook / cancelled cheque' };
+  const results = {};
+  const render = () => {
+    document.getElementById('dsResults').innerHTML = Object.entries(results).map(([k, r]) => `<div style="margin-top:6px;font-size:13px;">
+      <b>${kinds[k]}</b> — ${r.busy ? `reading… ${r.pct||0}%` : r.err ? `<span style="color:var(--red)">${escapeHtml(r.err)}</span>` : (r.found && r.found.length ? `<span style="color:var(--green)">filled ${r.found.join(', ')}</span>` : '<span style="color:var(--red)">nothing readable — try a brighter, flatter, closer photo</span>')}
+      ${(r.warn||[]).map(w => `<div style="color:#A8612F">⚠ ${escapeHtml(w)}</div>`).join('')}</div>`).join('');
+  };
+  box.querySelectorAll('input[type=file]').forEach(inp => {
+    inp.addEventListener('change', async () => {
+      const f = inp.files && inp.files[0]; if(!f) return; const kind = inp.dataset.kind;
+      results[kind] = { busy: true, pct: 0 }; render();
+      try{
+        dsCompress(f).then(b => { state.dsBlobs[kind] = b; }).catch(e => console.error(e));
+        const text = await dsOcr(f, p => { results[kind].pct = p; render(); });
+        const r = kind === 'aadhaar' ? dsParseAadhaar(text) : kind === 'pan' ? dsParsePan(text) : dsParseBank(text);
+        const found = [];
+        const set = (id, v, label) => { if(dsSetField(id, v)) found.push(label); };
+        if(kind === 'aadhaar'){ set('scAadhar', r.aadhar, 'Aadhaar no.'); set('scName', r.name, 'name'); set('scAddress', r.address, 'address'); if(r.state && dsSetField('scState', r.state)) found.push('state'); }
+        if(kind === 'pan'){ set('scPan', r.pan_no, 'PAN'); set('scNamePan', r.name_as_per_pan, 'name as per PAN'); set('scName', r.name_as_per_pan ? dsTitle(r.name_as_per_pan) : '', 'name'); }
+        if(kind === 'bank'){ set('scBankAcct', r.bank_account_no, 'account no.'); set('scIfsc', r.ifsc, 'IFSC'); set('scBankName', r.bank_name, 'bank'); set('scName', r.holder, 'name'); }
+        results[kind] = { found, warn: r.warn };
+      } catch(err){ results[kind] = { err: err.message || String(err) }; console.error(err); }
+      render(); inp.value = '';
+    });
+  });
+}
+async function dsCompress(file){
+  const url = URL.createObjectURL(file);
+  try{
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('Could not open the image')); i.src = url; });
+    const scale = Math.min(1, 1400 / Math.max(img.width, img.height));
+    const c = document.createElement('canvas'); c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    let q = 0.7, blob = null;
+    for(let i = 0; i < 5; i++){ blob = await new Promise(r => c.toBlob(r, 'image/jpeg', q)); if(blob && blob.size <= 300*1024) break; q -= 0.1; }
+    return blob;
+  } finally { URL.revokeObjectURL(url); }
+}
+async function dsUploadDocs(scId){
+  const blobs = state.dsBlobs || {}; const kinds = Object.keys(blobs).filter(k => blobs[k]);
+  if(!scId || !kinds.length || roleTestOn) return;
+  let okN = 0;
+  for(const k of kinds){
+    try{
+      const path = `${scId}/${k}.jpg`;
+      const up = await withRetry(() => sb.storage.from('sc-docs').upload(path, blobs[k], { upsert: true, contentType: 'image/jpeg' }));
+      if(up.error) throw up.error;
+      const { error } = await withRetry(() => sb.from('ra_sc_documents').upsert({ subcontractor_id: scId, kind: k, storage_path: path, size_bytes: blobs[k].size, uploaded_by: session.user.id }, { onConflict: 'subcontractor_id,kind' }));
+      if(error) throw error; okN++;
+    } catch(err){ console.error(err); toast(`Could not store the ${k} document — ${err.message || 'try again from Edit'}`, true); }
+  }
+  state.dsBlobs = {};
+  if(okN) toast(`${okN} document${okN>1?'s':''} stored (compressed).`);
+}
+const DS_KIND_LBL = { aadhaar: 'Aadhaar', pan: 'PAN', bank: 'Bank doc' };
+async function dsShowDocs(sc, el){
+  if(!el) return;
+  try{
+    const { data, error } = await withRetry(() => sb.from('ra_sc_documents').select('kind, storage_path, size_bytes').eq('subcontractor_id', sc.id));
+    if(error) throw error;
+    if(!data || !data.length){ el.innerHTML = '<span style="color:#8B8676;font-size:12.5px;">No documents stored.</span>'; return; }
+    el.innerHTML = data.map(d => `<button class="btn tiny" data-path="${escapeHtml(d.storage_path)}" data-kind="${d.kind}">📄 ${DS_KIND_LBL[d.kind]||d.kind} (${Math.round((d.size_bytes||0)/1024)} KB)</button>`).join(' ');
+    el.querySelectorAll('button').forEach(b => b.onclick = async () => {
+      const { data: u, error: e2 } = await sb.storage.from('sc-docs').createSignedUrl(b.dataset.path, 120);
+      if(e2 || !u) { toast('Could not open the document.', true); return; }
+      openModal(`<h3>${escapeHtml(sc.name)} — ${DS_KIND_LBL[b.dataset.kind]||''}</h3><img src="${u.signedUrl}" style="max-width:100%;border-radius:8px;border:1px solid var(--paper-line);"><div class="modal-actions"><button class="btn" id="dsBack">Back</button></div>`);
+      document.getElementById('dsBack').onclick = () => openSubcontractorQuickView(sc);
+    });
+  } catch(err){ el.innerHTML = '<span style="color:var(--red);font-size:12.5px;">Could not load documents.</span>'; console.error(err); }
+}
+function dsBoxHtml(){
+  state.dsBlobs = {};
+  const slot = (k, label, hint) => `<label style="flex:1;min-width:190px;border:1.5px dashed var(--paper-line);border-radius:10px;padding:12px;cursor:pointer;background:#fff;display:block;">
+    <div style="font-weight:600;font-size:14px;">${label}</div><div style="font-size:12px;color:#8B8676;margin:2px 0 8px;">${hint}</div>
+    <input type="file" accept="image/*" data-kind="${k}" style="font-size:12px;max-width:100%;"></label>`;
+  return `<div id="dsBox" style="background:var(--paper-2,#F2EFE8);border:1px solid var(--paper-line);border-radius:12px;padding:14px;margin-bottom:18px;">
+    <div style="font-weight:700;font-size:15px;">⚡ Quick add from documents</div>
+    <div style="font-size:12.5px;color:#6B6757;margin:3px 0 10px;">Upload or photograph the documents — CAMELS reads them and fills the form below. Review the green-highlighted fields, then create. Photos are compressed and stored privately (owner, PM and QS can view them).</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">${slot('aadhaar','Aadhaar card','Front side (number + name); back side for address')}${slot('pan','PAN card','Clear photo of the front')}${slot('bank','Bank passbook / cheque','First page or cancelled cheque leaf')}</div>
+    <div id="dsResults"></div></div>`;
+}
+
 function renderSubcontractorForm(){
   const editing = state.scEditingId ? state.subcontractors.find(s => s.id === state.scEditingId) : null;
   const main = document.getElementById('main');
@@ -2132,6 +2308,7 @@ function renderSubcontractorForm(){
           <input id="scInactiveReason" value="${escapeHtml(editing.inactive_reason||'')}" placeholder="e.g. quality issues on previous project">
         </div>
       ` : ''}
+      ${dsBoxHtml()}
       <div class="wo-form-grid">
         <div class="field"><label>Name</label><input id="scName" value="${editing?escapeHtml(editing.name):''}"></div>
         <div class="field"><label>Name as per PAN</label><input id="scNamePan" value="${editing?escapeHtml(editing.name_as_per_pan||''):''}"></div>
@@ -2173,6 +2350,7 @@ function renderSubcontractorForm(){
     document.getElementById('scInactiveReasonField').style.display = statusSelect.value === 'false' ? 'block' : 'none';
   });
 
+  dsWireDocScan();
   document.getElementById('scCancelBtn').onclick = () => { state.scCreating = false; state.scEditingId = null; renderSubcontractorsView(); };
   document.getElementById('scSaveBtn').onclick = async () => {
     const name = document.getElementById('scName').value.trim();
@@ -2202,6 +2380,7 @@ function renderSubcontractorForm(){
     saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
     const ok = editing ? await updateSubcontractor(editing.id, payload) : await createSubcontractorFull(payload);
     if(ok){
+      await dsUploadDocs(editing ? editing.id : state.lastCreatedScId);
       state.scCreating = false; state.scEditingId = null;
       await loadSubcontractors();
       renderSubcontractorsView();
@@ -2213,8 +2392,9 @@ function renderSubcontractorForm(){
 
 async function createSubcontractorFull(payload){
   try{
-    const { error } = await withRetry(() => sb.from('ra_subcontractors').insert(payload));
+    const { data: created, error } = await withRetry(() => sb.from('ra_subcontractors').insert(payload).select('id').single());
     if(error){ toast(error.message, true); return false; }
+    state.lastCreatedScId = created && created.id;
     toast('Subcontractor added.');
     return true;
   } catch(err){ toast('Could not reach the server — please try again.', true); console.error(err); return false; }
