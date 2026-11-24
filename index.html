@@ -2140,17 +2140,32 @@ function dsParseAadhaar(text){
 }
 function dsParsePan(text){
   const out = { warn: [] };
-  const t = String(text||'').toUpperCase();
-  const m = t.replace(/[^A-Z0-9\n ]/g, '').match(/[A-Z]{5}[0-9]{4}[A-Z]/);
+  const raw = String(text||'');
+  const t = raw.toUpperCase();
+  let m = t.replace(/[^A-Z0-9\n ]/g, '').match(/[A-Z]{5}[0-9]{4}[A-Z]/);
+  if(!m){ for(const ln of t.split(/\r?\n/)){ const mm = ln.replace(/[^A-Z0-9]/g, '').match(/[A-Z]{5}[0-9]{4}[A-Z]/); if(mm){ m = mm; break; } } }
   if(m){ out.pan_no = m[0]; if(!/^[A-Z]{3}[PCHFATBLJG]/.test(m[0])) out.warn.push('PAN format looks unusual — please verify'); }
-  const L = dsLines(text);
-  const ni = L.findIndex(l => /^(name|नाम)\b/i.test(l) && !/father|पिता/i.test(l));
-  if(ni >= 0){
-    const same = L[ni].replace(/^(name|नाम)\s*\/?\s*(name)?\s*:?\s*/i, '').trim();
-    const nxt = L[ni+1] || '';
-    const pick = /^[A-Za-z][A-Za-z .]{2,40}$/.test(same) ? same : (/^[A-Za-z][A-Za-z .]{2,40}$/.test(nxt) && !/father|date|birth|account/i.test(nxt) ? nxt : '');
-    if(pick) out.name_as_per_pan = pick.toUpperCase().replace(/\s+/g,' ').trim();
+  const L = dsLines(raw);
+  const clean = l => l.replace(/[^A-Za-z .]/g, ' ').replace(/\s+/g, ' ').trim();
+  const BAD = /(income|tax|depart|govt|government|india|permanent|account|number|card|father|signature|date|birth|dob|name|नाम|पिता|आयकर|भारत|सरकार)/i;
+  const isNameLike = l => { const c = clean(l); return c.length >= 4 && /^[A-Za-z][A-Za-z .]*$/.test(c) && c.split(' ').filter(w => w.length > 1).length >= 1 && !BAD.test(c) && (c.replace(/[^A-Z]/g,'').length >= c.replace(/[^A-Za-z]/g,'').length * 0.7); };
+  // 1) text right after a "Name" label (tolerates OCR slips like Narne / Nme)
+  let pick = '';
+  const li = L.findIndex(l => /^[^A-Za-z]*(n[a4]me|narne|nme|नाम)\b/i.test(l) && !/father|पिता/i.test(l));
+  if(li >= 0){
+    const same = clean(L[li].replace(/^[^A-Za-z]*(n[a4]me|narne|nme)\s*\/?\s*(name)?\s*[:\-]?/i, ''));
+    if(isNameLike(same)) pick = same;
+    else for(let i = li + 1; i < Math.min(L.length, li + 4); i++){ if(isNameLike(L[i])){ pick = clean(L[i]); break; } }
   }
+  // 2) fall back: the first all-capital name-like line after the PAN number (name comes before father's name)
+  if(!pick){
+    const pi = L.findIndex(l => /[A-Z]{5}[0-9]{4}[A-Z]/.test(l.toUpperCase().replace(/[^A-Z0-9]/g,'')));
+    const from = pi >= 0 ? pi + 1 : 0;
+    for(let i = from; i < L.length; i++){ if(isNameLike(L[i])){ pick = clean(L[i]); break; } }
+    if(!pick) for(let i = 0; i < from; i++){ if(isNameLike(L[i])){ pick = clean(L[i]); break; } }
+  }
+  if(pick){ out.name_as_per_pan = pick.toUpperCase(); out.warn.push('Name read from the card — please check the spelling'); }
+  else out.warn.push('Could not read the name — try a closer, brighter photo, or type it');
   return out;
 }
 function dsParseBank(text){
@@ -2208,7 +2223,7 @@ function dsWireDocScan(){
   const render = () => {
     document.getElementById('dsResults').innerHTML = Object.entries(results).map(([k, r]) => `<div style="margin-top:6px;font-size:13px;">
       <b>${kinds[k]}</b> — ${r.busy ? `reading… ${r.pct||0}%` : r.err ? `<span style="color:var(--red)">${escapeHtml(r.err)}</span>` : (r.found && r.found.length ? `<span style="color:var(--green)">filled ${r.found.join(', ')}</span>` : '<span style="color:var(--red)">nothing readable — try a brighter, flatter, closer photo</span>')}
-      ${(r.warn||[]).map(w => `<div style="color:#A8612F">⚠ ${escapeHtml(w)}</div>`).join('')}</div>`).join('');
+      ${(r.warn||[]).map(w => `<div style="color:#A8612F">⚠ ${escapeHtml(w)}</div>`).join('')}${r.raw ? `<details style="margin-top:3px;"><summary style="cursor:pointer;color:#8B8676;font-size:12px;">What the app read</summary><pre style="white-space:pre-wrap;font-size:11.5px;background:#fff;border:1px solid var(--paper-line);border-radius:6px;padding:6px;max-height:160px;overflow:auto;">${escapeHtml(r.raw)}</pre></details>` : ''}</div>`).join('');
   };
   box.querySelectorAll('input[type=file]').forEach(inp => {
     inp.addEventListener('change', async () => {
@@ -2237,7 +2252,7 @@ function dsWireDocScan(){
           if(kind === 'aadhaar'){ set('scAadhar', r.aadhar, 'Aadhaar no.'); if(dsSetField('scName', r.name, true)) found.push('name (use PAN to confirm)'); set('scAddress', r.address, 'address'); if(r.state && dsSetField('scState', r.state)) found.push('state'); }
           if(kind === 'pan'){ set('scPan', r.pan_no, 'PAN'); set('scNamePan', r.name_as_per_pan, 'name as per PAN'); set('scName', r.name_as_per_pan ? dsTitle(r.name_as_per_pan) : '', 'name'); }
           if(kind === 'bank'){ set('scBankAcct', r.bank_account_no, 'account no.'); set('scIfsc', r.ifsc, 'IFSC'); set('scBankName', r.bank_name, 'bank'); }
-          results[rk] = { found, warn: r.warn };
+          results[rk] = { found, warn: r.warn, raw: text };
         } catch(err){ results[rk] = { err: err.message || String(err) }; console.error(err); }
         render();
       }
