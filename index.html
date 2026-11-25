@@ -1550,6 +1550,10 @@ function renderMain(){
     main.innerHTML = `${renderProjectHeader(project)}<div id="tabContent"></div>`;
     wireProjectHeaderActions(project);
     renderBillsTab(project);
+  } else if(state.activeTab === 'flats' || state.activeTab === 'sitebills'){
+    main.innerHTML = `${renderProjectHeader(project)}<div id="tabContent"></div>`;
+    wireProjectHeaderActions(project);
+    state.activeTab === 'flats' ? renderFlatsTab(project) : renderSiteBillsTab(project);
   } else if(state.activeTab === 'dlr'){
     main.innerHTML = `${renderProjectHeader(project)}<div id="tabContent"></div>`;
     wireProjectHeaderActions(project);
@@ -1740,6 +1744,8 @@ function renderProjectSubNav(){
       <button class="proj-subnav-btn ${state.activeTab==='budget'&&!state.viewingWOId?'active':''}" data-sec="budget">Budget</button>
       <button class="proj-subnav-btn ${state.activeTab==='workorders'?'active':''}" data-sec="workorders">Work Orders${state.workOrders.length ? ` (${state.workOrders.length})` : ''}</button>
       <button class="proj-subnav-btn ${state.activeTab==='bills'?'active':''}" data-sec="bills">Bills</button>
+      <button class="proj-subnav-btn ${state.activeTab==='flats'?'active':''}" data-sec="flats">Flats</button>
+      <button class="proj-subnav-btn ${state.activeTab==='sitebills'?'active':''}" data-sec="sitebills">Site Bills</button>
       <button class="proj-subnav-btn ${state.activeTab==='dlr'?'active':''}" data-sec="dlr">Daily Labour</button>
     </div>
   `;
@@ -1763,6 +1769,199 @@ function renderProjectSubNav(){
       renderMain();
     };
   });
+}
+
+/* ================= Site-engineer billing: Flats & certification + Site Bills queue ================= */
+const SB_TRACK_DAYS = 14;
+const sbDate = d => d ? new Date(d).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' }) : '—';
+const sbDays = d => d ? Math.floor((Date.now() - new Date(d).getTime()) / 86400000) : null;
+const sbLeafFloors = () => (state.stages || []).filter(s => s.parent_stage_id && itemsForStage(s.id).length);
+function sbExpandFlats(txt){
+  const out = [];
+  String(txt || '').split(/[\s,;]+/).filter(Boolean).forEach(tok => {
+    const m = tok.match(/^(\d+)-(\d+)$/);
+    if(m && +m[2] >= +m[1] && (+m[2] - +m[1]) < 200){ for(let i = +m[1]; i <= +m[2]; i++) out.push(String(i)); }
+    else out.push(tok);
+  });
+  return [...new Set(out)];
+}
+
+async function renderFlatsTab(project){
+  const tc = document.getElementById('tabContent');
+  tc.innerHTML = `<div class="loading">Loading…</div>`;
+  const floors = sbLeafFloors();
+  if(!floors.length){ tc.innerHTML = `<div class="wo-lines-empty">This project has no floors with budget items yet.</div>`; return; }
+  if(!state.flatFloor || !floors.find(f => f.id === state.flatFloor)) state.flatFloor = floors[0].id;
+  const [fR, cR] = await Promise.all([
+    withRetry(() => sb.from('ra_flats').select('*, ra_flat_work_status(budget_item_id)').eq('project_id', project.id).order('flat_no').range(0, 4999)),
+    withRetry(() => sb.from('ra_site_claim_lines').select('budget_item_id, flat_ids, ra_site_claims!inner(status, project_id)').eq('ra_site_claims.project_id', project.id).neq('ra_site_claims.status', 'rejected').range(0, 4999))
+  ]);
+  if(fR.error){ tc.innerHTML = `<div class="wo-lines-empty">${escapeHtml(fR.error.message)}</div>`; return; }
+  const flats = fR.data || [];
+  const claimed = new Set(); (cR.data || []).forEach(l => (l.flat_ids || []).forEach(fid => claimed.add(l.budget_item_id + ':' + fid)));
+  const floor = state.stages.find(s => s.id === state.flatFloor), items = itemsForStage(floor.id);
+  const fl = flats.filter(f => f.floor_stage_id === floor.id).sort((a, b) => a.flat_no.localeCompare(b.flat_no, undefined, { numeric:true }));
+  const canEdit = canCreateWO(), owner = isOwner();
+  const certified = f => new Set((f.ra_flat_work_status || []).map(s => s.budget_item_id));
+  const counts = {}; flats.forEach(f => { counts[f.floor_stage_id] = (counts[f.floor_stage_id] || 0) + 1; });
+  const opts = floors.map(f => `<option value="${f.id}" ${f.id === floor.id ? 'selected' : ''}>${escapeHtml(getStagePath(f.id))}${counts[f.id] ? ` (${counts[f.id]} flats)` : ' — no flats yet'}</option>`).join('');
+  tc.innerHTML = `
+    <div class="wo-rate-note" style="margin-bottom:12px;">Site engineers can bill a flat only after <b>${owner ? 'you' : 'the owner'}</b> certify it complete here, per work item. Once billed, a certified flat is locked.</div>
+    <div class="field"><label>Floor</label><select id="flFloor">${opts}</select></div>
+    ${canEdit ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 14px;align-items:center;">
+      <input id="flAddTxt" placeholder="Add flats: 101, 102, 103 or 101-108" style="flex:1;min-width:220px;">
+      <button class="btn tiny primary" id="flAddBtn">+ Add flats</button>
+      <button class="btn tiny" id="flCopyBtn" title="Copy this floor's flat numbers to every other floor that has none">Copy flat list to all other floors</button></div>` : ''}
+    ${fl.length ? `<div style="overflow-x:auto;"><table class="wo-doc-table" style="min-width:420px;font-size:13px;">
+      <thead><tr><th>Flat</th>${items.map(i => `<th style="text-align:center;">${escapeHtml(i.description)}${owner ? `<br><a href="#" class="flAll" data-i="${i.id}" style="font-weight:500;font-size:11px;">certify all</a>` : ''}</th>`).join('')}<th></th></tr></thead>
+      <tbody>${fl.map(f => { const c = certified(f); return `<tr><td><b>${escapeHtml(f.flat_no)}</b></td>${items.map(i => {
+        const done = c.has(i.id), cl = claimed.has(i.id + ':' + f.id);
+        return `<td style="text-align:center;">${cl ? '<span title="Already claimed by site — locked">💰 ✓</span>' : `<input type="checkbox" class="flChk" data-f="${f.id}" data-i="${i.id}" ${done ? 'checked' : ''} ${owner ? '' : 'disabled'}>`}</td>`; }).join('')}
+        <td>${canEdit && !c.size ? `<button class="icon-btn flDel" data-f="${f.id}" title="Remove flat">✕</button>` : ''}</td></tr>`; }).join('')}</tbody></table></div>`
+      : `<div class="wo-lines-empty">No flats added for this floor yet.</div>`}`;
+  document.getElementById('flFloor').onchange = e => { state.flatFloor = e.target.value; renderFlatsTab(project); };
+  const uid = async () => (await sb.auth.getUser()).data.user.id;
+  const addFlats = async (floorId, nos) => {
+    const rows = nos.map(n => ({ project_id: project.id, floor_stage_id: floorId, flat_no: n }));
+    if(!rows.length) return;
+    const { error } = await sb.from('ra_flats').upsert(rows, { onConflict:'floor_stage_id,flat_no', ignoreDuplicates:true });
+    if(error) toast(error.message, true);
+  };
+  const addBtn = document.getElementById('flAddBtn');
+  if(addBtn) addBtn.onclick = async () => { const nos = sbExpandFlats(document.getElementById('flAddTxt').value); if(!nos.length){ toast('Type the flat numbers first.', true); return; } await addFlats(floor.id, nos); renderFlatsTab(project); };
+  const copyBtn = document.getElementById('flCopyBtn');
+  if(copyBtn) copyBtn.onclick = async () => {
+    if(!fl.length){ toast('Add flats to this floor first.', true); return; }
+    const targets = floors.filter(f => f.id !== floor.id && !counts[f.id]);
+    if(!targets.length){ toast('Every other floor already has flats.', true); return; }
+    if(!confirm(`Copy ${fl.length} flat number(s) to ${targets.length} other floor(s)?`)) return;
+    const rows = []; targets.forEach(t => fl.forEach(f => rows.push({ project_id: project.id, floor_stage_id: t.id, flat_no: f.flat_no })));
+    const { error } = await sb.from('ra_flats').insert(rows); if(error){ toast(error.message, true); return; }
+    toast('Flat list copied.'); renderFlatsTab(project);
+  };
+  tc.querySelectorAll('.flDel').forEach(b => b.onclick = async () => { if(!confirm('Remove this flat?')) return; const { error } = await sb.from('ra_flats').delete().eq('id', b.dataset.f); if(error) toast(error.message, true); renderFlatsTab(project); });
+  tc.querySelectorAll('.flChk').forEach(c => c.onchange = async () => {
+    c.disabled = true;
+    const res = c.checked ? await sb.from('ra_flat_work_status').insert({ flat_id:c.dataset.f, budget_item_id:c.dataset.i, certified_by: await uid() })
+                          : await sb.from('ra_flat_work_status').delete().eq('flat_id', c.dataset.f).eq('budget_item_id', c.dataset.i);
+    if(res.error){ toast(res.error.message, true); c.checked = !c.checked; }
+    c.disabled = false;
+  });
+  tc.querySelectorAll('.flAll').forEach(a => a.onclick = async ev => {
+    ev.preventDefault(); const itemId = a.dataset.i; const u = await uid();
+    const rows = fl.filter(f => !certified(f).has(itemId) && !claimed.has(itemId + ':' + f.id)).map(f => ({ flat_id:f.id, budget_item_id:itemId, certified_by:u }));
+    if(!rows.length){ toast('All flats already certified for this work.'); return; }
+    if(!confirm(`Certify ${rows.length} flat(s) complete for this work?`)) return;
+    const { error } = await sb.from('ra_flat_work_status').insert(rows); if(error) toast(error.message, true); renderFlatsTab(project);
+  });
+}
+
+async function renderSiteBillsTab(project){
+  const tc = document.getElementById('tabContent');
+  tc.innerHTML = `<div class="loading">Loading…</div>`;
+  const [cR, uR, fR, wR] = await Promise.all([
+    withRetry(() => sb.from('ra_site_claims').select('*, ra_site_claim_lines(*), ra_subcontractors(name), ra_work_orders(wo_ref)').eq('project_id', project.id).order('submitted_at', { ascending:false }).limit(150)),
+    withRetry(() => sb.from('ra_site_users').select('user_id, full_name, active')),
+    withRetry(() => sb.from('ra_flats').select('id, flat_no').eq('project_id', project.id).range(0, 4999)),
+    withRetry(() => sb.from('ra_work_orders').select('id, wo_ref, subcontractor_id, ra_subcontractors(name)').eq('project_id', project.id).eq('status', 'active').is('deleted_at', null))
+  ]);
+  if(cR.error){ tc.innerHTML = `<div class="wo-lines-empty">${escapeHtml(cR.error.message)}</div>`; return; }
+  const claims = cR.data || [], eng = {}; (uR.data || []).forEach(u => eng[u.user_id] = u);
+  const flatNo = {}; (fR.data || []).forEach(f => flatNo[f.id] = f.flat_no);
+  const itemName = id => (state.budgetItems.find(b => b.id === id) || {}).description || '—';
+  const filter = state.sbFilter || 'open';
+  const shown = claims.filter(c => filter === 'all' ? true : filter === 'open' ? (c.status === 'new' || c.status === 'under_review') : c.status === filter);
+  const openCnt = claims.filter(c => c.status === 'new' || c.status === 'under_review').length;
+  // tracker: one row per subcontractor with an active WO
+  const subs = {}; (wR.data || []).forEach(w => { subs[w.subcontractor_id] = subs[w.subcontractor_id] || { name:(w.ra_subcontractors || {}).name || '—', last:null, n:0 }; });
+  claims.forEach(c => { const s = subs[c.subcontractor_id]; if(s){ if(!s.last || c.submitted_at > s.last) s.last = c.submitted_at; if(sbDays(c.submitted_at) <= SB_TRACK_DAYS) s.n++; } });
+  const trackRows = Object.values(subs).sort((a, b) => (sbDays(b.last) ?? 9999) - (sbDays(a.last) ?? 9999));
+  const engLast = {}; claims.forEach(c => { if(!engLast[c.submitted_by] || c.submitted_at > engLast[c.submitted_by]) engLast[c.submitted_by] = c.submitted_at; });
+  const amt = c => (c.ra_site_claim_lines || []).reduce((s, l) => s + Number(l.amount || 0), 0);
+  const canAct = canCreateWO(), lump = !!project.lumpsum_billing;
+  tc.innerHTML = `
+    <h4 class="wo-lines-title" style="margin-top:0;">Who has sent bills <span style="font-weight:400;font-size:12px;color:#6B6757;">(last ${SB_TRACK_DAYS} days)</span></h4>
+    ${trackRows.length ? `<table class="wo-doc-table" style="font-size:13px;"><thead><tr><th>Subcontractor</th><th>Last bill sent</th><th class="num">Bills in ${SB_TRACK_DAYS} days</th><th>Status</th></tr></thead><tbody>
+      ${trackRows.map(s => { const d = sbDays(s.last), late = d === null || d > SB_TRACK_DAYS; return `<tr><td>${escapeHtml(s.name)}</td><td>${s.last ? sbDate(s.last) + ` (${d}d ago)` : 'Never'}</td><td class="num">${s.n}</td><td style="color:${late ? 'var(--red)' : 'var(--green)'};font-weight:700;">${late ? '⚠ Not sent' : '✓ Sent'}</td></tr>`; }).join('')}</tbody></table>`
+      : `<div class="wo-lines-empty">No subcontractor has an active Work Order on this project.</div>`}
+    ${(uR.data || []).length ? `<div class="wo-rate-note" style="margin-top:8px;">Engineers: ${(uR.data || []).map(u => `${escapeHtml(u.full_name)} — ${engLast[u.user_id] ? 'last sent ' + sbDate(engLast[u.user_id]) : 'nothing sent yet'}`).join(' · ')}</div>` : ''}
+    <h4 class="wo-lines-title">Bills from site ${openCnt ? `<span class="badge billable">${openCnt} to review</span>` : ''}</h4>
+    <div class="toolbar" style="gap:6px;flex-wrap:wrap;">${[['open','To review'],['billed','Billed'],['rejected','Rejected'],['all','All']].map(([k, l]) => `<button class="btn tiny ${filter === k ? 'primary' : ''}" data-f="${k}">${l}</button>`).join('')}</div>
+    <div id="sbList">${shown.length ? shown.map(c => `
+      <div class="wo-card" style="display:block;cursor:default;margin-bottom:10px;" data-id="${c.id}">
+        <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+          <div><div class="wo-sc-name">${escapeHtml((c.ra_subcontractors || {}).name || '')} <span style="font-weight:400;font-size:12px;">· ${escapeHtml((c.ra_work_orders || {}).wo_ref || '')}</span></div>
+            <div class="wo-meta">${escapeHtml((eng[c.submitted_by] || {}).full_name || 'Engineer')} · ${sbDate(c.submitted_at)}</div></div>
+          <div><span class="badge ${c.status === 'billed' ? 'billable' : c.status === 'rejected' ? '' : 'internal'}">${c.status.replace('_', ' ')}</span>${c.flagged ? ` <span class="badge" style="background:var(--red);color:#fff;" title="${escapeHtml(c.flag_note || '')}">over item budget</span>` : ''}</div></div>
+        ${(c.ra_site_claim_lines || []).map(l => `<div style="font-size:13px;margin-top:5px;">${escapeHtml(itemName(l.budget_item_id))} — ${escapeHtml(getStagePath(l.floor_stage_id))} · flats ${escapeHtml((l.flat_ids || []).map(i => flatNo[i] || '?').join(', '))} · <b>${fmtNum(l.qty)} ${escapeHtml(l.unit || '')}</b>${l.amount != null ? ` · ₹${fmtNum(l.amount)}` : ''}${l.over_item ? ' ⚠' : ''}</div>`).join('')}
+        ${c.remarks ? `<div class="wo-doc-scope" style="margin-top:6px;">“${escapeHtml(c.remarks)}”</div>` : ''}
+        ${!lump ? `<div style="font-size:12.5px;margin-top:6px;">Claim value: <b>₹${fmtNum(amt(c))}</b></div>` : ''}
+        ${c.status === 'rejected' && c.review_note ? `<div style="color:var(--red);font-size:12.5px;margin-top:4px;">Rejected: ${escapeHtml(c.review_note)}</div>` : ''}
+        ${canAct && (c.status === 'new' || c.status === 'under_review') ? `<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;"><button class="btn tiny primary sbBill">Create RA bill</button>${c.status === 'new' ? `<button class="btn tiny sbReview">Mark under review</button>` : ''}<button class="btn tiny sbReject">Reject</button></div>` : ''}
+        ${c.status === 'billed' && c.bill_id ? `<div style="margin-top:8px;"><button class="btn tiny sbOpen">Open bill</button></div>` : ''}
+      </div>`).join('') : `<div class="wo-lines-empty">Nothing here.</div>`}</div>
+    ${isOwner() ? `<h4 class="wo-lines-title">Site engineer logins</h4><div id="sbEng"><div class="loading">Loading…</div></div>` : ''}`;
+  tc.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { state.sbFilter = b.dataset.f; renderSiteBillsTab(project); });
+  const byId = id => claims.find(c => c.id === id);
+  tc.querySelectorAll('.wo-card[data-id]').forEach(card => {
+    const c = byId(card.dataset.id);
+    const q = s => card.querySelector(s);
+    if(q('.sbReview')) q('.sbReview').onclick = async () => { await sb.from('ra_site_claims').update({ status:'under_review', reviewed_by:(await sb.auth.getUser()).data.user.id, reviewed_at:new Date().toISOString() }).eq('id', c.id); renderSiteBillsTab(project); };
+    if(q('.sbReject')) q('.sbReject').onclick = async () => { const r = prompt('Reason for rejecting (the engineer will see this):'); if(r === null) return; if(!r.trim()){ toast('Please give a reason.', true); return; }
+      const { error } = await sb.from('ra_site_claims').update({ status:'rejected', review_note:r.trim(), reviewed_by:(await sb.auth.getUser()).data.user.id, reviewed_at:new Date().toISOString() }).eq('id', c.id); if(error) toast(error.message, true); renderSiteBillsTab(project); };
+    if(q('.sbBill')) q('.sbBill').onclick = async ev => { ev.target.disabled = true; ev.target.textContent = 'Creating…'; await sbCreateBillFromClaim(c, project); renderSiteBillsTab(project); };
+    if(q('.sbOpen')) q('.sbOpen').onclick = async () => { state.activeTab = 'workorders'; state.viewingWOId = c.wo_id; await loadWODetail(c.wo_id, project.id); state.currentBillId = c.bill_id; state.billEntryReturnTo = 'bills'; await loadBillEntry(c.bill_id, c.wo_id); renderMain(); };
+  });
+  if(isOwner()) sbRenderEngineers(project);
+}
+
+async function sbCreateBillFromClaim(claim, project){
+  try{
+    const bill = await createDraftBill(claim.wo_id); if(!bill) return;
+    state.activeTab = 'workorders'; state.viewingWOId = claim.wo_id;
+    await loadWODetail(claim.wo_id, project.id);
+    const wo = state.woDetail, lines = claim.ra_site_claim_lines || [];
+    if(project.lumpsum_billing){
+      for(const l of lines){ const st = state.stages.find(s => s.id === l.floor_stage_id); await lsAddItemLine(project, wo, lsCat(st), l.floor_stage_id, l.budget_item_id); }
+    } else {
+      const agg = {}; lines.forEach(l => agg[l.wo_line_item_id] = (agg[l.wo_line_item_id] || 0) + Number(l.qty));
+      const rows = Object.entries(agg).map(([id, q]) => ({ bill_id: bill.id, wo_line_item_id: id, this_qty: q }));
+      const { error } = await sb.from('ra_bill_line_entries').insert(rows); if(error){ toast(error.message, true); return; }
+    }
+    await sb.from('ra_site_claims').update({ status:'billed', bill_id: bill.id, reviewed_by:(await sb.auth.getUser()).data.user.id, reviewed_at:new Date().toISOString() }).eq('id', claim.id);
+    state.currentBillId = bill.id; state.billEntryReturnTo = 'bills';
+    await loadBillEntry(bill.id, claim.wo_id); renderMain();
+    toast(project.lumpsum_billing ? 'Draft bill created with the claimed floors — enter the ₹ amounts.' : 'Draft bill created from the site claim — please verify and submit.');
+  } catch(err){ toast('Could not create the bill — please try again.', true); console.error(err); }
+}
+
+async function sbRenderEngineers(project){
+  const el = document.getElementById('sbEng'); if(!el) return;
+  const [lr, pr] = await Promise.all([ sb.functions.invoke('admin-users', { body:{ action:'list' } }), withRetry(() => sb.from('ra_site_user_projects').select('user_id, project_id')) ]);
+  const users = ((lr.data && lr.data.users) || []).filter(u => u.role === 'site');
+  const proj = {}; (pr.data || []).forEach(p => (proj[p.user_id] = proj[p.user_id] || []).push(p.project_id));
+  const pname = id => (state.projects.find(p => p.id === id) || {}).name || '?';
+  el.innerHTML = `${users.length ? `<table class="wo-doc-table" style="font-size:13px;"><thead><tr><th>Name</th><th>Login (email)</th><th>Projects</th><th>Last sign-in</th><th></th></tr></thead><tbody>
+    ${users.map(u => `<tr><td>${escapeHtml(u.full_name || '')}${u.disabled ? ' <i>(disabled)</i>' : ''}</td><td>${escapeHtml(u.email)}</td><td>${(proj[u.user_id] || []).map(pname).map(escapeHtml).join(', ')}</td><td>${u.last_sign_in_at ? sbDate(u.last_sign_in_at) : 'Never'}</td>
+      <td style="white-space:nowrap;"><button class="btn tiny sbEPw" data-u="${u.user_id}">Reset password</button> <button class="btn tiny sbEAct" data-u="${u.user_id}" data-a="${u.disabled ? 1 : 0}">${u.disabled ? 'Enable' : 'Disable'}</button></td></tr>`).join('')}</tbody></table>` : `<div class="wo-lines-empty">No site engineer logins yet.</div>`}
+    <div style="border:1px dashed var(--paper-line);border-radius:10px;padding:10px 12px;margin-top:10px;background:#FBFAF6;">
+      <div style="font-weight:600;margin-bottom:6px;">Add a site engineer</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;">
+        <input id="seName" placeholder="Name"><input id="seEmail" placeholder="Login email" type="email"><input id="sePhone" placeholder="Phone (optional)"></div>
+      <div style="margin:8px 0;font-size:13px;">Projects: ${state.projects.map(p => `<label style="margin-right:12px;white-space:nowrap;"><input type="checkbox" class="seProj" value="${p.id}" ${p.id === project.id ? 'checked' : ''}> ${escapeHtml(p.name)}</label>`).join('')}</div>
+      <button class="btn tiny primary" id="seAdd">+ Create login</button>
+      <div class="wo-rate-note" style="margin-top:6px;">Engineers sign in at <b>site.html</b> (same place as CAMELS). They see only quantities and flat status — never rates, budgets or payments.</div></div>`;
+  const showPw = (email, pw) => alert(`Login created\n\nEmail: ${email}\nPassword: ${pw}\n\nShare these with the engineer. The password is shown only now.`);
+  document.getElementById('seAdd').onclick = async () => {
+    const full_name = document.getElementById('seName').value.trim(), email = document.getElementById('seEmail').value.trim();
+    const project_ids = [...document.querySelectorAll('.seProj:checked')].map(x => x.value);
+    if(!full_name || !email){ toast('Enter name and email.', true); return; } if(!project_ids.length){ toast('Choose at least one project.', true); return; }
+    const r = await sb.functions.invoke('admin-users', { body:{ action:'create_site', full_name, email, phone:document.getElementById('sePhone').value.trim(), project_ids } });
+    const err = (r.data && r.data.error) || (r.error && r.error.message); if(err){ toast(err, true); return; }
+    showPw(r.data.email, r.data.password); renderSiteBillsTab(project);
+  };
+  el.querySelectorAll('.sbEPw').forEach(b => b.onclick = async () => { if(!confirm('Reset this engineer\'s password?')) return; const r = await sb.functions.invoke('admin-users', { body:{ action:'reset_password', user_id:b.dataset.u } }); const err = (r.data && r.data.error) || (r.error && r.error.message); if(err){ toast(err, true); return; } alert('New password: ' + r.data.password); });
+  el.querySelectorAll('.sbEAct').forEach(b => b.onclick = async () => { const r = await sb.functions.invoke('admin-users', { body:{ action:'set_active', user_id:b.dataset.u, active: b.dataset.a === '1' } }); const err = (r.data && r.data.error) || (r.error && r.error.message); if(err){ toast(err, true); return; } renderSiteBillsTab(project); });
 }
 
 function renderBudgetTab(project){

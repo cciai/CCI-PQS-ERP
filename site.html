@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>CCI Site Bills</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+:root{--navy:#1B2A4A;--paper:#FAF8F5;--line:#D8D2C6;--steel:#6B7A92;--amber:#C97C4A;--green:#3F8F63;--red:#C1453A}
+*{box-sizing:border-box}
+body{margin:0;font-family:'Barlow',sans-serif;background:var(--paper);color:var(--navy);font-size:16px;-webkit-text-size-adjust:100%}
+.hdr{background:var(--navy);color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:8px;position:sticky;top:0;z-index:5}
+.hdr b{font-family:'Barlow Condensed',sans-serif;font-size:21px;letter-spacing:.02em}
+.hdr small{display:block;font-size:11.5px;opacity:.75}
+.hdr button{background:rgba(255,255,255,.14);color:#fff;border:0;border-radius:8px;padding:8px 12px;font:600 13px 'Barlow'}
+main{max-width:640px;margin:0 auto;padding:14px 14px 90px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
+label{display:block;font-weight:600;font-size:13px;margin:12px 0 5px;color:var(--steel)}
+label:first-child{margin-top:0}
+select,input,textarea{width:100%;font:500 16px 'Barlow';padding:12px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--navy)}
+textarea{min-height:70px}
+.btn{display:block;width:100%;border:0;border-radius:12px;padding:14px;font:700 16px 'Barlow';background:var(--navy);color:#fff;margin-top:12px}
+.btn.alt{background:#fff;color:var(--navy);border:1.5px solid var(--navy)}
+.btn[disabled]{opacity:.5}
+.tabs{display:flex;gap:6px;margin-bottom:12px}
+.tabs button{flex:1;padding:11px;border-radius:10px;border:1px solid var(--line);background:#fff;font:700 14px 'Barlow';color:var(--steel)}
+.tabs button.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1.5px solid var(--line);border-radius:22px;padding:9px 15px;font-weight:700;background:#fff;color:var(--navy)}
+.chip.on{background:var(--green);border-color:var(--green);color:#fff}
+.note{font-size:13px;color:var(--steel);margin:6px 0}
+.line{border-top:1px solid var(--line);padding:10px 0;display:flex;justify-content:space-between;gap:10px}
+.line:first-child{border-top:0}
+.line .x{background:none;border:0;color:var(--red);font:700 14px 'Barlow'}
+.badge{display:inline-block;border-radius:6px;padding:3px 9px;font-size:12px;font-weight:700;color:#fff}
+.b-new{background:var(--amber)}.b-under_review{background:#2F6DB5}.b-billed{background:var(--green)}.b-rejected{background:var(--red)}
+.err{background:#FBE9E7;color:var(--red);border-radius:10px;padding:10px 12px;margin:10px 0;font-weight:600}
+.ok{background:#E8F4EC;color:var(--green);border-radius:10px;padding:10px 12px;margin:10px 0;font-weight:600}
+.center{max-width:380px;margin:12vh auto 0;padding:0 18px}
+h2{font-family:'Barlow Condensed',sans-serif;margin:0 0 10px;font-size:24px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const SB_URL='https://jtbmrohjrsnoxcgcmmls.supabase.co', SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp0Ym1yb2hqcnNub3hjZ2NtbWxzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcxNDM4OTEsImV4cCI6MjEwMjcxOTg5MX0.Fy1gRJkj3MLnJBmbonNpMKnfNyJx9Fzq49xbaC8pDK4';
+const sb = supabase.createClient(SB_URL, SB_KEY);
+const $ = id => document.getElementById(id);
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const S = { ctx:null, project:null, subs:[], floors:[], tab:'new', subId:'', woId:'', lines:[], pick:{ floor:'', item:'', flats:[], wl:'', qty:'' }, msg:null, my:null, busy:false };
+const STATUS = { new:'Received', under_review:'Under review', billed:'Billed', rejected:'Rejected' };
+
+function showErr(e){ const m = (e && e.message) || String(e); return m.replace(/^.*?:\s*(?=You |This |Flat|Already|Add |Select|Enter|A selected|Billing)/,''); }
+
+async function boot(){
+  const { data:{ session } } = await sb.auth.getSession();
+  if(!session) return loginView();
+  const r = await sb.rpc('site_ctx');
+  if(r.error){ await sb.auth.signOut(); return loginView(showErr(r.error)); }
+  S.ctx = r.data;
+  if(!S.ctx.projects.length){ return app(`<div class="center"><h2>No project assigned</h2><p class="note">Please ask the office to assign your project.</p><button class="btn alt" onclick="logout()">Sign out</button></div>`); }
+  let pid = null; try{ pid = localStorage.getItem('site_project'); }catch(e){}
+  S.project = S.ctx.projects.find(p => p.id === pid) || S.ctx.projects[0];
+  await loadProject();
+}
+function app(h){ $('app').innerHTML = h; }
+function loginView(err){
+  app(`<div class="center"><h2>CCI Site Bills</h2><p class="note">Sign in with the login given by the office.</p>
+    ${err?`<div class="err">${esc(err)}</div>`:''}
+    <label>Email</label><input id="em" type="email" autocomplete="username" inputmode="email">
+    <label>Password</label><input id="pw" type="password" autocomplete="current-password">
+    <button class="btn" id="go">Sign in</button></div>`);
+  $('go').onclick = async () => {
+    $('go').disabled = true;
+    const { error } = await sb.auth.signInWithPassword({ email:$('em').value.trim(), password:$('pw').value });
+    if(error){ loginView('Wrong email or password.'); return; }
+    boot();
+  };
+}
+async function logout(){ await sb.auth.signOut(); S.ctx = null; loginView(); }
+async function loadProject(){
+  app(`<div class="center"><p class="note">Loading…</p></div>`);
+  const [a,b] = await Promise.all([ sb.rpc('site_subs',{p_project:S.project.id}), sb.rpc('site_floors',{p_project:S.project.id}) ]);
+  if(a.error || b.error){ return app(`<div class="center"><div class="err">${esc(showErr(a.error||b.error))}</div><button class="btn" onclick="boot()">Try again</button></div>`); }
+  S.subs = a.data || []; S.floors = b.data || []; S.lines = []; S.pick = { floor:'', item:'', flats:[], wl:'', qty:'' };
+  S.subId = ''; S.woId = ''; render();
+}
+function header(){
+  const multi = S.ctx.projects.length > 1;
+  return `<div class="hdr"><div><b>${esc(S.project.name)}</b><small>${esc(S.ctx.name)}</small></div>
+    <div style="display:flex;gap:6px">${multi?`<button onclick="switchProject()">Project</button>`:''}<button onclick="logout()">Sign out</button></div></div>`;
+}
+function switchProject(){
+  const i = S.ctx.projects.findIndex(p => p.id === S.project.id);
+  S.project = S.ctx.projects[(i+1) % S.ctx.projects.length]; try{ localStorage.setItem('site_project', S.project.id); }catch(e){}
+  loadProject();
+}
+function render(){
+  app(header() + `<main><div class="tabs"><button class="${S.tab==='new'?'on':''}" onclick="setTab('new')">New bill</button><button class="${S.tab==='my'?'on':''}" onclick="setTab('my')">My submissions</button></div>
+    ${S.msg?`<div class="${S.msg.ok?'ok':'err'}">${esc(S.msg.t)}</div>`:''}<div id="body"></div></main>`);
+  S.tab === 'new' ? newView() : myView();
+}
+function setTab(t){ S.tab = t; S.msg = null; render(); }
+
+function curSub(){ return S.subs.find(s => s.id === S.subId); }
+function curWo(){ const s = curSub(); return s && s.wos.find(w => w.id === S.woId); }
+function curFloor(){ return S.floors.find(f => f.id === S.pick.floor); }
+function curItem(){ const f = curFloor(); return f && f.items.find(i => i.id === S.pick.item); }
+
+function newView(){
+  const sub = curSub(), wo = curWo(), fl = curFloor(), it = curItem();
+  const subOpts = `<option value="">Select subcontractor</option>` + S.subs.map(s => `<option value="${s.id}" ${s.id===S.subId?'selected':''}>${esc(s.name)}</option>`).join('');
+  let h = `<div class="card"><label>Subcontractor</label><select id="sub">${subOpts}</select>`;
+  if(sub && sub.wos.length > 1) h += `<label>Work order</label><select id="wo">${sub.wos.map(w => `<option value="${w.id}" ${w.id===S.woId?'selected':''}>${esc(w.ref)}${w.nature?' – '+esc(w.nature):''}</option>`).join('')}</select>`;
+  else if(wo) h += `<div class="note">Work order ${esc(wo.ref)}${wo.nature?' – '+esc(wo.nature):''}</div>`;
+  h += `</div>`;
+  if(!S.subs.length) h += `<div class="card note">No subcontractor has an open work order on this project yet.</div>`;
+  if(wo){
+    if(!S.floors.length) h += `<div class="card note"><b>Nothing is open for billing yet.</b><br>A floor opens for billing only after the flat is certified complete by the office.</div>`;
+    else {
+      h += `<div class="card"><h2 style="font-size:20px">Add completed work</h2>
+        <label>Floor</label><select id="floor"><option value="">Select floor</option>${S.floors.map(f => `<option value="${f.id}" ${f.id===S.pick.floor?'selected':''}>${esc(f.name)}${f.group?' · '+esc(f.group):''}</option>`).join('')}</select>`;
+      if(fl) h += `<label>Work</label><select id="item"><option value="">Select work</option>${fl.items.map(i => `<option value="${i.id}" ${i.id===S.pick.item?'selected':''}>${esc(i.description)}</option>`).join('')}</select>`;
+      if(it){
+        h += `<label>Completed flats (tap to select)</label><div class="chips">${it.flats.map(f => `<button class="chip ${S.pick.flats.includes(f.id)?'on':''}" data-f="${f.id}">${esc(f.flat_no)}</button>`).join('')}</div>
+          <button class="btn alt" style="margin-top:8px;padding:9px" id="allf">Select all flats</button>
+          <label>Work item as per work order</label><select id="wl">${wo.lines.map(l => `<option value="${l.id}" ${l.id===S.pick.wl?'selected':''}>${esc(l.description)} (${esc(l.unit||'')})</option>`).join('')}</select>
+          <label>Quantity done${wo.lines.find(l=>l.id===S.pick.wl)?' ('+esc(wo.lines.find(l=>l.id===S.pick.wl).unit||'')+')':''}</label>
+          <input id="qty" type="number" inputmode="decimal" step="any" value="${esc(S.pick.qty)}" placeholder="Total for the selected flats">
+          <button class="btn" id="addl">Add to bill</button>`;
+      }
+      h += `</div>`;
+    }
+    if(S.lines.length){
+      h += `<div class="card"><h2 style="font-size:20px">This bill</h2>${S.lines.map((l,i) => `<div class="line"><div><b>${esc(l.itemName)}</b> – ${esc(l.floorName)}<div class="note">Flats ${esc(l.flatNos)} · ${esc(l.qty)} ${esc(l.unit||'')}</div></div><button class="x" data-rm="${i}">Remove</button></div>`).join('')}
+        <label>Remarks (optional)</label><textarea id="rem"></textarea>
+        <button class="btn" id="submit" ${S.busy?'disabled':''}>Submit bill to office</button></div>`;
+    }
+  }
+  $('body').innerHTML = h;
+  const on = (id, ev, fn) => { const e = $(id); if(e) e.addEventListener(ev, fn); };
+  on('sub','change', e => { S.subId = e.target.value; const s = curSub(); S.woId = s ? s.wos[0].id : ''; S.lines = []; S.pick = { floor:'', item:'', flats:[], wl:'', qty:'' }; render(); });
+  on('wo','change', e => { S.woId = e.target.value; S.lines = []; S.pick.wl = ''; render(); });
+  on('floor','change', e => { S.pick = { floor:e.target.value, item:'', flats:[], wl:'', qty:'' }; render(); });
+  on('item','change', e => { S.pick.item = e.target.value; S.pick.flats = []; const w = curWo(), i = curItem();
+    S.pick.wl = ''; if(w && i){ const m = w.lines.find(l => (l.description||'').toLowerCase().includes(i.description.toLowerCase().split(' ')[0])); S.pick.wl = (m || w.lines[0] || {}).id || ''; } render(); });
+  document.querySelectorAll('.chip').forEach(c => c.onclick = () => { const id = c.dataset.f; const a = S.pick.flats; const k = a.indexOf(id); k >= 0 ? a.splice(k,1) : a.push(id); S.pick.qty = $('qty') ? $('qty').value : S.pick.qty; S.pick.wl = $('wl') ? $('wl').value : S.pick.wl; render(); });
+  on('allf','click', () => { const i = curItem(); S.pick.flats = i.flats.map(f => f.id); S.pick.qty = $('qty').value; S.pick.wl = $('wl').value; render(); });
+  on('wl','change', e => { S.pick.wl = e.target.value; S.pick.qty = $('qty').value; render(); });
+  on('addl','click', () => {
+    const q = parseFloat($('qty').value), wlid = $('wl').value; const w = curWo(), i = curItem(), f = curFloor();
+    if(!S.pick.flats.length){ S.msg = null; return flash('Select at least one flat.'); }
+    if(!(q > 0)) return flash('Enter the quantity done.');
+    const wl = w.lines.find(l => l.id === wlid);
+    S.lines.push({ wo_line_item_id:wlid, floor_stage_id:f.id, budget_item_id:i.id, flat_ids:S.pick.flats.slice(), qty:q, unit:wl.unit, itemName:i.description, floorName:f.name, flatNos:i.flats.filter(x => S.pick.flats.includes(x.id)).map(x => x.flat_no).join(', ') });
+    S.pick = { floor:S.pick.floor, item:'', flats:[], wl:'', qty:'' }; S.msg = null; render();
+  });
+  document.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { S.lines.splice(+b.dataset.rm, 1); render(); });
+  on('submit','click', submit);
+}
+function flash(t){ S.msg = { ok:false, t }; render(); window.scrollTo(0,0); }
+async function submit(){
+  if(S.busy) return; S.busy = true; $('submit').disabled = true;
+  const { data, error } = await sb.rpc('site_submit_claim', { p_project:S.project.id, p_wo:S.woId, p_lines:S.lines.map(l => ({ wo_line_item_id:l.wo_line_item_id, floor_stage_id:l.floor_stage_id, budget_item_id:l.budget_item_id, flat_ids:l.flat_ids, qty:l.qty })), p_remarks:$('rem').value });
+  S.busy = false;
+  if(error){ S.msg = { ok:false, t:showErr(error) }; render(); window.scrollTo(0,0); return; }
+  S.msg = { ok:true, t:'Bill submitted to the office. Thank you.' }; S.tab = 'my'; S.my = null;
+  const [a,b] = await Promise.all([ sb.rpc('site_subs',{p_project:S.project.id}), sb.rpc('site_floors',{p_project:S.project.id}) ]);
+  S.subs = a.data || []; S.floors = b.data || []; S.lines = []; S.pick = { floor:'', item:'', flats:[], wl:'', qty:'' }; S.subId = ''; S.woId = '';
+  render(); window.scrollTo(0,0);
+}
+async function myView(){
+  $('body').innerHTML = `<p class="note">Loading…</p>`;
+  if(!S.my){ const r = await sb.rpc('site_my_claims'); S.my = r.error ? [] : (r.data || []); }
+  $('body').innerHTML = S.my.length ? S.my.map(c => `<div class="card"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>${esc(c.sub)}</b><span class="badge b-${c.status}">${STATUS[c.status]||c.status}</span></div>
+    <div class="note">${esc(c.project)} · ${esc(c.wo)} · ${new Date(c.at).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</div>
+    ${(c.lines||[]).map(l => `<div class="line"><div>${esc(l.item)} – ${esc(l.floor)}<div class="note">Flats ${esc(l.flats||'')} · ${esc(l.qty)} ${esc(l.unit||'')}</div></div></div>`).join('')}
+    ${c.status==='rejected' && c.note ? `<div class="err">${esc(c.note)}</div>` : ''}</div>`).join('') : `<div class="card note">No bills submitted yet.</div>`;
+}
+boot();
+</script>
+</body>
+</html>
