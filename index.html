@@ -400,7 +400,7 @@
   .wo-doc-toprow{
     display:flex; justify-content:space-between; align-items:center;
     font-family:'Barlow',sans-serif; font-size:9px; letter-spacing:.06em;
-    text-transform:uppercase; color:#999; margin-bottom:10px;
+    text-transform:uppercase; color:#000; margin-bottom:10px;
   }
   .wo-doc-stamp-area{ width:120px; height:1px; } /* reserved blank space for a physical stamp */
   .wo-doc-header{ display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px solid #1B3A6B; padding-bottom:16px; margin-bottom:20px; }
@@ -408,34 +408,27 @@
   .wo-doc-company{ text-align:right; font-size:11px; line-height:1.5; }
   .wo-doc-company .name{ font-weight:700; font-size:14px; color:#1B3A6B; }
   .wo-doc-title{ text-align:center; font-size:20px; font-weight:700; color:#1B3A6B; letter-spacing:.04em; margin:18px 0; }
-  .wo-doc-meta{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; font-size:11px; margin-bottom:22px; border-bottom:1px solid #ddd; padding-bottom:16px; }
-  .wo-doc-meta .l{ text-transform:uppercase; letter-spacing:.05em; color:#888; font-size:9.5px; margin-bottom:3px; }
+  .wo-doc-meta{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; font-size:11px; margin-bottom:22px; border-bottom:1px solid #000; padding-bottom:16px; }
+  .wo-doc-meta .l{ text-transform:uppercase; letter-spacing:.05em; color:#000; font-size:9.5px; margin-bottom:3px; }
   .wo-doc-parties{ display:grid; grid-template-columns:1fr 1fr; gap:20px; font-size:11.5px; margin-bottom:22px; }
-  .wo-doc-parties h4{ font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:#888; margin:0 0 6px; }
+  .wo-doc-parties h4{ font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:#000; margin:0 0 6px; }
   .wo-doc-parties .n{ font-weight:700; }
   .wo-doc h3.section{ font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:#1B3A6B; border-bottom:1px solid #1B3A6B; padding-bottom:4px; margin:26px 0 12px; }
   .wo-doc-table{ width:100%; border-collapse:collapse; font-size:11px; }
-  .wo-doc-table th, .wo-doc-table td{ border:1px solid #ccc; padding:7px 8px; text-align:left; vertical-align:top; }
+  .wo-doc-table th, .wo-doc-table td{ border:1px solid #000; padding:7px 8px; text-align:left; vertical-align:top; }
   .wo-doc-table th{ background:#EFF2F7; font-size:9.5px; text-transform:uppercase; letter-spacing:.03em; }
   .wo-doc-table td.num{ text-align:right; white-space:nowrap; }
   .wo-doc-table-narrow{ width:auto; min-width:280px; max-width:360px; }
-  .wo-doc-scope{ font-size:10px; color:#555; margin-top:4px; white-space:pre-wrap; }
+  .wo-doc-scope{ font-size:10px; color:#000; margin-top:4px; white-space:pre-wrap; }
   .wo-doc-total-row td{ font-weight:700; background:#F7F5EF; }
   .wo-doc-terms{ font-size:10.5px; white-space:pre-wrap; line-height:1.6; }
   .wo-doc-sign{ display:grid; grid-template-columns:1fr 1fr; gap:40px; margin-top:60px; }
   .wo-doc-sign div{ border-top:1px solid #333; padding-top:6px; font-size:11px; }
   .wo-doc-footer-safety{
-    margin-top:40px; padding-top:10px; border-top:1px solid #ddd; text-align:center;
+    margin-top:40px; padding-top:10px; border-top:1px solid #000; text-align:center;
     font-family:'Barlow',sans-serif; font-size:10px; font-weight:700; letter-spacing:.12em; color:#1B3A6B;
   }
 
-  /* Black & white printing: everything solid black, no grey/blue text, no shaded fills */
-  #printArea, #printArea *{ color:#000 !important; border-color:#000 !important; text-shadow:none !important; }
-  #printArea .wo-doc-table th, #printArea .wo-doc-total-row td, #printArea .wo-doc-table td{ background:#fff !important; }
-  #printArea .wo-doc-table th{ font-weight:700; }
-  #printArea .wo-doc-meta{ border-bottom-color:#000 !important; }
-  #printArea .wo-doc-footer-safety{ border-top-color:#000 !important; }
-  #printArea *{ opacity:1 !important; filter:grayscale(1) contrast(1.4); }
   @media print{
     body *{ visibility:hidden; }
     #printArea, #printArea *{ visibility:visible; }
@@ -448,7 +441,7 @@
     @page{
       margin: 16mm 14mm 20mm 14mm;
       @bottom-left{ content: "Page " counter(page) " of " counter(pages); font-family:'Barlow',sans-serif; font-size:8.5px; color:#000; }
-      @bottom-center{ content: "MAKE SAFETY PERSONAL"; font-family:'Barlow',sans-serif; font-size:8.5px; font-weight:700; letter-spacing:.12em; color:#000; }
+      @bottom-center{ content: "MAKE SAFETY PERSONAL"; font-family:'Barlow',sans-serif; font-size:8.5px; font-weight:700; letter-spacing:.12em; color:#1B3A6B; }
     }
   }
 </style>
