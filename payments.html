@@ -175,6 +175,8 @@ const BCLS = { open: 'draft', completed: 'paid' };
 const badgeB = s => `<span class="badge b-${esc(BCLS[s] || s)}">${esc(BLABEL[s] || s)}</span>`;
 const badge = s => `<span class="badge b-${esc(s)}">${esc(STATUS_LABEL[s] || s)}</span>`;
 const DEV_REASONS = { client_inflow_delayed: 'Client inflow delayed', statutory_due: 'Statutory dues (GST/PF/ESI/TDS)', wages_critical: 'Labour wages critical', material_critical: 'Material critical for progress', advance_to_secure: 'Advance to secure rate/supply', other: 'Other (explain)' };
+const COMPANIES = ['Cameo','CCI Urban','CCI Projects','CCI Contracting Services','CCI Contracts','CCI Technical Services','CCI Engineering Services'];
+const coOpts = (cur, ph) => `<option value="">${ph || 'Select company…'}</option>` + COMPANIES.map(c => `<option ${cur === c ? 'selected' : ''}>${esc(c)}</option>`).join('');
 const CATS = { labour: 'Labour', material: 'Material', subcontract: 'Subcontract', equipment: 'Equipment / rental', statutory: 'Statutory', overhead: 'Overhead', other: 'Other' };
 
 /* ---------- state ---------- */
@@ -389,7 +391,7 @@ function vReqs() {
     return `<tr>
       <td>${r.status === 'draft' && canSubmit() ? `<input type="checkbox" data-act="selreq" data-id="${r.id}" ${f.sel.has(r.id) ? 'checked' : ''}>` : ''}</td>
       <td class="mono"><a href="#" data-act="detail" data-id="${r.id}">${esc(r.req_no)}</a></td>
-      <td>${esc(r.project_name)}</td><td><b>${esc(r.payee_name)}</b><div class="mut" style="font-size:12px">${esc(CATS[r.category] || r.category)}${r.bill_ref ? ' · ' + esc(r.bill_ref) : ''}</div></td>
+      <td>${esc(r.project_name)}</td><td><b>${esc(r.payee_name)}</b><div class="mut" style="font-size:12px">${esc(CATS[r.category] || r.category)}${r.bill_ref ? ' · ' + esc(r.bill_ref) : ''}${r.paying_company ? ' · <b>' + esc(r.paying_company) + '</b>' : ''}</div></td>
       <td class="r amt">${inr(r.gross_amount)}</td><td class="r amt">${num(r.tds_amount) ? inr(r.tds_amount) : '—'}</td><td class="r amt"><b>${inr(r.net_amount)}</b>${r.approved_amount && num(r.approved_amount) !== num(r.net_amount) ? `<div class="bad" style="font-size:11px">approved ${inr(r.approved_amount)}</div>` : ''}</td>
       <td>${gate}${r.priority === 'urgent' ? ' <span class="badge b-warn">Urgent</span>' : ''}</td>
       <td>${badge(r.status)}${r.is_backfill ? ' <span class="badge b-open">Past entry</span>' : ''}${r.ceo_remark && ['draft', 'rejected'].includes(r.status) ? `<div class="bad" style="font-size:11px;max-width:200px">CEO: ${esc(r.ceo_remark)}</div>` : ''}${r.fail_note && r.status === 'approved' ? `<div class="bad" style="font-size:11px">Bank: ${esc(r.fail_note)}</div>` : ''}${r.partner_status === 'returned' && r.status === 'approved' ? `<div class="bad" style="font-size:11px">Partner office: ${esc(r.partner_remark)}</div>` : ''}</td>
@@ -412,8 +414,8 @@ function vReqs() {
 }
 
 /* ---------- Excel-style quick entry ---------- */
-const GCOLS = ['p', 'y', 'c', 'bill', 'g', 't', 'd', 'pr'];
-const gBlank = () => ({ p: '', y: '', c: 'labour', bill: '', g: '', t: '', d: '', pr: 'normal', dr: 'client_inflow_delayed', ds: '' });
+const GCOLS = ['p', 'y', 'c', 'bill', 'g', 't', 'd', 'pr', 'co'];
+const gBlank = () => ({ p: '', y: '', c: 'labour', bill: '', g: '', t: '', d: '', pr: 'normal', co: '', dr: 'client_inflow_delayed', ds: '' });
 function gRows() { if (!S.ui.grid) S.ui.grid = Array.from({ length: 8 }, gBlank); return S.ui.grid; }
 function gPayeeMap() { return payeeLabelMap(); }
 function gPayeeId(label, labels) {
@@ -421,7 +423,7 @@ function gPayeeId(label, labels) {
   const k = Object.keys(labels).find(x => x.toLowerCase() === v.toLowerCase()); return k ? labels[k] : null;
 }
 function gCalc() {
-  const labels = gPayeeMap(); const run = {};
+  const labels = gPayeeMap(); const run = {}, avail = {};
   return gRows().map(r => {
     const empty = !r.p && !r.y && !r.g && !r.bill;
     const net = num(r.g) - num(r.t);
@@ -430,7 +432,19 @@ function gCalc() {
     if (!r.p) { o.msg = 'Select project'; return o; }
     if (!o.payee) { o.msg = r.y ? 'Payee not in list' : 'Pick payee'; return o; }
     if (num(r.g) <= 0 || net <= 0) { o.msg = 'Check amount'; return o; }
-    { const py = payeeOf(o.payee); if (py && py.subcontractor_id && !r.bill) { o.msg = 'Select Bill ref'; return o; } }
+    if (!r.co) { o.msg = 'Select paying company'; return o; }
+    { const py = payeeOf(o.payee);
+      if (py && py.subcontractor_id) {
+        if (!r.bill) { o.msg = 'Select Bill ref'; return o; }
+        const sid = py.subcontractor_id, L = LG[sid];
+        if (!L) { gLoadLedger(sid); o.msg = 'Checking RA ledger…'; return o; }
+        if (!(sid in avail)) avail[sid] = ledgerCalc(sid, L.d, null).available;
+        if (r.bill === 'Against RA') {
+          if (net > avail[sid] + 0.5) { o.msg = avail[sid] <= 0.5 ? 'No RA balance left — raise as Advance' : `Exceeds RA balance ${inr0(avail[sid])}`; return o; }
+          o.note = `RA balance after: ${inr0(avail[sid] - net)}`;
+        }
+        avail[sid] -= net;
+      } }
     if (!(r.p in run)) run[r.p] = num((posOf(r.p) || {}).headroom) - pendingNet(r.p, null);
     o.dev = net > Math.max(run[r.p], 0); run[r.p] -= net; o.ok = true; return o;
   });
@@ -450,6 +464,7 @@ function gBodyHtml() {
     <td class="r amt" id="g-net-${i}">—</td>
     <td>${inp(i, 'd', 'date', r.d, 120)}</td>
     <td>${sel(i, 'pr', [['normal', 'Normal'], ['urgent', 'Urgent']], r.pr)}</td>
+    <td>${sel(i, 'co', COMPANIES.map(c => [c, c]), r.co, 'Company…')}</td>
     <td id="g-chk-${i}" style="white-space:nowrap"></td>
     <td>${sel(i, 'dr', Object.entries(DEV_REASONS), r.dr, 'Reason…')}</td>
     <td><button class="btn s" data-act="griddel" data-r="${i}" title="Remove row">×</button></td></tr>`).join('');
@@ -457,17 +472,23 @@ function gBodyHtml() {
 function vGrid() {
   return `<div class="card" style="margin-bottom:14px"><div class="row" style="margin-bottom:8px"><h3 style="margin:0">Excel-style entry</h3><span class="sp"></span>
     <label class="btn s">⬆ Upload Excel <input type="file" accept=".xlsx,.xls,.csv" data-act="gridxlsx" style="display:none"></label><button class="btn s" data-act="gridtemplate">⬇ Template</button><button class="btn s" data-act="gridadd">+ 5 rows</button><button class="btn s" data-act="gridclear">Clear</button><button class="btn p" data-act="gridsave">Save all as drafts</button></div>
-    <p class="mut" style="font-size:12.5px;margin:0 0 8px">Type row by row, or <b>copy rows from Excel and paste into any cell</b> — columns in this order: Project, Payee, Category, Bill ref (Advance / Against RA), Gross, TDS, Due date, Priority. Each row shows an inflow check. Deviation rows need a reason and a fund-from account. Rows are saved as drafts; you then submit them to the CEO.</p>
-    <div class="tw"><table class="gtbl"><thead><tr><th>#</th><th>Project</th><th>Payee</th><th>Category</th><th>Bill ref</th><th class="r">Gross ₹</th><th class="r">TDS ₹</th><th class="r">Net ₹</th><th>Due</th><th>Priority</th><th>Check</th><th>Deviation reason</th><th></th></tr></thead>
+    <p class="mut" style="font-size:12.5px;margin:0 0 8px">Type row by row, or <b>copy rows from Excel and paste into any cell</b> — columns in this order: Project, Payee, Category, Bill ref (Advance / Against RA), Gross, TDS, Due date, Priority, Paying company. Each row shows an inflow check. Deviation rows need a reason and a fund-from account. Rows are saved as drafts; you then submit them to the CEO.</p>
+    <div class="tw"><table class="gtbl"><thead><tr><th>#</th><th>Project</th><th>Payee</th><th>Category</th><th>Bill ref</th><th class="r">Gross ₹</th><th class="r">TDS ₹</th><th class="r">Net ₹</th><th>Due</th><th>Priority</th><th>Paying company</th><th>Check</th><th>Deviation reason</th><th></th></tr></thead>
     <tbody id="grid-body">${gBodyHtml()}</tbody></table></div>
     <div class="row" style="margin-top:8px"><span id="g-sum" class="mut"></span></div></div>`;
+}
+const gLoading = new Set();
+function gLoadLedger(sid) {
+  if (gLoading.has(sid)) return; gLoading.add(sid);
+  loadLedger(sid).then(d => { LG[sid] = LG[sid] || { t: Date.now(), d }; }).catch(() => { LG[sid] = { t: Date.now(), d: { bills: [], pays: [], billed: 0, ledgerSettled: 0, advance: 0, excess: 0 } }; })
+    .finally(() => { gLoading.delete(sid); if (S.tab === 'reqs' && S.ui.gridOpen) gUpdate(); });
 }
 function gUpdate() {
   const calc = gCalc(); let n = 0, tot = 0;
   calc.forEach((o, i) => {
     const net = $('#g-net-' + i), chk = $('#g-chk-' + i); if (!net || !chk) return;
     net.textContent = o.empty || !(o.net > 0) ? '—' : inr(o.net);
-    chk.innerHTML = o.empty ? '' : o.ok ? (o.dev ? '<span class="badge b-dev">Deviation</span>' : '<span class="badge b-green">In inflow</span>') : `<span class="bad" style="font-size:12px">${esc(o.msg)}</span>`;
+    chk.innerHTML = o.empty ? '' : o.ok ? ((o.dev ? '<span class="badge b-dev">Deviation</span>' : '<span class="badge b-green">In inflow</span>') + (o.note ? `<div class="mut" style="font-size:11px">${esc(o.note)}</div>` : '')) : `<span class="bad" style="font-size:12px">${esc(o.msg)}</span>`;
     ['dr'].forEach(c => { const e = document.querySelector(`[data-r="${i}"][data-c="${c}"]`); if (e) e.disabled = !(o.ok && o.dev); });
     if (o.ok) { n++; tot += o.net; }
   });
@@ -491,6 +512,7 @@ function gPaste(el, text) {
       else if (col === 'c') { const k = Object.entries(CATS).find(([k2, l]) => k2 === v.toLowerCase() || l.toLowerCase().startsWith(v.toLowerCase()) && v); row.c = k ? k[0] : row.c; }
       else if (col === 'g' || col === 't') row[col] = v.replace(/[₹,\s]/g, '');
       else if (col === 'd') row.d = gParseDate(v);
+      else if (col === 'co') { const k = COMPANIES.find(x => x.toLowerCase() === v.toLowerCase()) || COMPANIES.slice().sort((a, b) => b.length - a.length).find(x => v && x.toLowerCase().includes(v.toLowerCase())) || (v && COMPANIES.find(x => x.toLowerCase().includes(v.toLowerCase()))); row.co = k || ''; }
       else if (col === 'pr') row.pr = /urg/i.test(v) ? 'urgent' : 'normal';
       else if (col === 'bill') row.bill = /^adv/i.test(v) ? 'Advance' : /^(ra\b|ra[ -]?\d|against)/i.test(v) ? 'Against RA' : v;
       else row[col] = v;
@@ -507,7 +529,7 @@ async function loadLedger(subId) {
   const [bills, pays] = await Promise.all([
     qry(sb.from('ra_bills').select('id,bill_no,period_from,period_to,status,debit_amount,gst_pct,ra_work_orders!inner(wo_ref,subcontractor_id,retention_pct,tds_pct,safety_pct,safety_amount,gst_pct,ra_projects(name)),ra_bill_line_entries(this_qty,ra_wo_line_items(agreed_rate))')
       .eq('ra_work_orders.subcontractor_id', subId).in('status', ['submitted', 'approved', 'paid']).is('deleted_at', null).order('period_to', { ascending: true })),
-    qry(sb.from('ra_payments').select('id,bill_id,amount_paid,tds_amount,date_paid,payment_type').eq('subcontractor_id', subId).order('date_paid', { ascending: true }))
+    qry(sb.from('ra_payments').select('id,bill_id,amount_paid,tds_amount,date_paid,payment_type,paying_company').eq('subcontractor_id', subId).order('date_paid', { ascending: true }))
   ]);
   const B = (bills || []).map(b => {
     const wo = b.ra_work_orders || {};
@@ -550,6 +572,7 @@ function ledgerHtml(py, d, c) {
       ${c.modTotal ? `<span>Paid through Payments app, not yet in ledger</span><b class="amt">${inr0(c.modTotal)}</b>` : ''}
       <span>Outstanding on bills</span><b class="amt">${inr0(c.outstanding)}</b>
       ${c.pipe.length ? `<span>Already requested, not yet paid (${c.pipe.length})</span><b class="amt">${inr0(c.pipeTotal)}</b><span>Available to request</span><b class="amt">${inr0(c.available)}</b>` : ''}</div>
+    ${(() => { const m = {}; (d.pays || []).forEach(x => { const k = x.paying_company || 'Company not tagged'; m[k] = (m[k] || 0) + num(x.amount_paid) + num(x.tds_amount); }); const e = Object.entries(m); return e.length ? `<div style="margin:6px 0;font-size:12.5px"><b>Paid by company:</b> ${e.map(([k, v]) => esc(k) + ' ' + inr0(v)).join(' · ')}</div>` : ''; })()}
     ${d.excess > 0.5 ? `<div class="okh">Payments exceed bills by ${inr0(d.excess)} — advance still to be adjusted.</div>` : ''}
     <div id="rf-lghint"></div></div>`;
 }
@@ -616,6 +639,7 @@ function reqFormHtml(r) {
       <div class="field"><label>Category</label><select id="rf-cat">${Object.entries(CATS).map(([k, v]) => `<option value="${k}" ${(r.category || 'labour') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div></div>
     <div class="field"><label>Payee <span style="text-transform:none;letter-spacing:0;font-weight:500">— starred ★ shown first; type to find any supplier or subcontractor</span></label><input id="rf-payee" data-live="payee" data-pc="rf" autocomplete="off" value="${esc(curLabel)}" placeholder="Pick from the list, or type any name…">
       <div class="mut" style="font-size:12px;margin-top:3px">Not listed? Add the vendor under <b>Payees</b> first (bank account + IFSC are needed for the bank file).</div></div>
+    <div class="field"><label>Paying company <span style="text-transform:none;letter-spacing:0;font-weight:500">— which CCI entity pays this</span></label><select id="rf-company">${coOpts(r.paying_company)}</select></div>
     <div id="rf-ledger"></div>
     <div class="grid3"><div class="field"><label>Bill ref</label><select id="rf-billtype" data-live="billtype"><option value="">Select…</option><option value="advance">Advance</option><option value="ra">Against RA</option><option value="other">Other invoice / ref</option></select></div>
       <div class="field"><label>Due date</label><input id="rf-due" type="date" value="${esc(r.due_date || '')}"></div>
@@ -882,6 +906,7 @@ function vInflow() {
     <div class="grid3"><div class="field"><label>Gross amount (₹)</label><input id="pp-gross" type="number" step="0.01" min="0"></div>
       <div class="field"><label>TDS (₹)</label><input id="pp-tds" type="number" step="0.01" min="0" value="0"></div>
       <div class="field"><label>Date paid</label><input id="pp-date" type="date" value="${todayISO()}" max="${todayISO()}"></div></div>
+    <div class="field"><label>Paying company</label><select id="pp-company">${coOpts('')}</select></div>
     <div class="grid3"><div class="field"><label>Paid from</label><select id="pp-bank"><option value="">—</option>${S.banks.map(b => `<option value="${b.id}">${esc(b.label)}</option>`).join('')}</select></div>
       <div class="field"><label>UTR / reference (optional)</label><input id="pp-utr"></div>
       <div class="field"><label>Bill ref / note (optional)</label><input id="pp-note"></div></div>
@@ -1164,7 +1189,7 @@ const ACT = {
     else if (bt === 'ra') { const sel = $('#rf-rabill').value; const bb = sel && S.ui._lg && S.ui._lg.d.bills.find(x => x.id === sel); bill_ref = bb ? 'Against RA — ' + bb.short : 'Against RA'; bill_id = bb ? bb.id : null; }
     else if (bt === 'other') bill_ref = $('#rf-other').value.trim() || null;
     const row = { project_id: pid, payee_id: p.id, payee_name: p.name, category: $('#rf-cat').value, bill_ref, bill_id, due_date: $('#rf-due').value || null,
-      priority: $('#rf-prio').value, description: $('#rf-desc').value.trim() || null, gross_amount: gross, tds_amount: tds, other_deduction: oth,
+      priority: $('#rf-prio').value, paying_company: $('#rf-company').value || null, description: $('#rf-desc').value.trim() || null, gross_amount: gross, tds_amount: tds, other_deduction: oth,
       dev_reason_code: $('#rf-dreason').value || null, dev_expected_inflow_date: $('#rf-ddate').value || null,
       dev_expected_inflow_amount: $('#rf-damt').value ? num($('#rf-damt').value) : null, dev_note: $('#rf-dnote').value.trim() || null };
     await guard(async () => {
@@ -1199,7 +1224,7 @@ const ACT = {
       const canAudit = ['owner', 'accounts'].includes(role());
       const au = canAudit ? await qry(sb.from('pay_audit').select('*').eq('entity', 'request').eq('entity_id', r.id).order('at')) : [];
       openModal(`<div class="ovl" data-act="ovl"><div class="modal"><div class="row"><h2>${esc(r.req_no)}</h2>${badge(r.status)}<span class="sp"></span><button class="btn s" data-act="closemodal">Close</button></div>
-        <div class="kv" style="margin:8px 0 14px"><span>Project</span><span>${esc(r.project_name)}</span><span>Payee</span><span>${esc(r.payee_name)}</span><span>Category</span><span>${esc(CATS[r.category])}</span><span>Bill ref</span><span>${esc(r.bill_ref || '—')}</span><span>Description</span><span>${esc(r.description || '—')}</span>
+        <div class="kv" style="margin:8px 0 14px"><span>Project</span><span>${esc(r.project_name)}</span><span>Payee</span><span>${esc(r.payee_name)}</span><span>Category</span><span>${esc(CATS[r.category])}</span><span>Bill ref</span><span>${esc(r.bill_ref || '—')}</span><span>Paying company</span><span>${canAudit ? `<select id="dt-co">${coOpts(r.paying_company, '— not set —')}</select> <button class="btn s" data-act="setco" data-id="${r.id}">Save</button>` : esc(r.paying_company || '—')}</span><span>Description</span><span>${esc(r.description || '—')}</span>
         <span>Gross / TDS / Net</span><span class="amt">${inr(r.gross_amount)} / ${inr(r.tds_amount)} / <b>${inr(r.net_amount)}</b></span>${r.approved_amount ? `<span>CEO approved</span><span class="amt"><b>${inr(r.approved_amount)}</b>${r.ceo_remark ? ' — ' + esc(r.ceo_remark) : ''}</span>` : ''}
         ${r.is_deviation ? `<span>Deviation</span><span class="bad">${inr(r.shortfall_at_approval ?? r.shortfall_at_submit)} above client inflow · ${esc(DEV_REASONS[r.dev_reason_code] || '')} · ${esc((bankOf(r.dev_funding_account_id) || {}).label || '')}${r.dev_note ? ' · ' + esc(r.dev_note) : ''}</span>` : ''}
         ${r.utr ? `<span>UTR</span><span class="mono">${esc(r.utr)} · ${fdate(r.paid_date)}</span>` : ''}</div>
@@ -1387,9 +1412,9 @@ const ACT = {
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Food advance'); XLSX.writeFile(wb, `CCI_auto_payment_sheet_${a.from}_to_${a.to}.xlsx`);
   },
   gridtemplate() {
-    const hdr = ['Project', 'Payee', 'Category', 'Bill ref (Advance / Against RA)', 'Gross', 'TDS', 'Due date (DD/MM/YYYY)', 'Priority (Normal / Urgent)'];
-    const ex = [[(S.projects[0] || {}).name || 'Project name', ((pickPayees()[0] || {}).name) || 'Payee name', 'Labour', 'Advance', 50000, 500, '', 'Normal']];
-    const ws = XLSX.utils.aoa_to_sheet([hdr, ...ex]); ws['!cols'] = [24, 30, 14, 30, 12, 10, 22, 24].map(w => ({ wch: w }));
+    const hdr = ['Project', 'Payee', 'Category', 'Bill ref (Advance / Against RA)', 'Gross', 'TDS', 'Due date (DD/MM/YYYY)', 'Priority (Normal / Urgent)', 'Paying company'];
+    const ex = [[(S.projects[0] || {}).name || 'Project name', ((pickPayees()[0] || {}).name) || 'Payee name', 'Labour', 'Advance', 50000, 500, '', 'Normal', 'Cameo']];
+    const ws = XLSX.utils.aoa_to_sheet([hdr, ...ex]); ws['!cols'] = [24, 30, 14, 30, 12, 10, 22, 24, 28].map(w => ({ wch: w }));
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Payments'); XLSX.writeFile(wb, 'CCI_payment_requests_template.xlsx');
   },
   async gridxlsx(el) {
@@ -1406,7 +1431,7 @@ const ACT = {
       let start = g.findIndex(r => !r.y && !r.g && !r.bill); if (start < 0) start = g.length;
       while (g.length < start + rows.length) g.push(gBlank());
       S.tab = 'reqs'; renderShell();
-      gPaste({ dataset: { r: String(start), c: 'p' } }, rows.map(r => r.slice(0, 8).map(c => String(c).replace(/[\t\r\n]+/g, ' ')).join('\t')).join('\n'));
+      gPaste({ dataset: { r: String(start), c: 'p' } }, rows.map(r => r.slice(0, 9).map(c => String(c).replace(/[\t\r\n]+/g, ' ')).join('\t')).join('\n'));
       const bad = gRows().slice(start, start + rows.length).filter(r => !r.p || !gPayeeId(r.y, gPayeeMap())).length;
       toast(`${rows.length} row(s) loaded from ${f.name}` + (bad ? ` — ${bad} need a Project or Payee fixed (payee must be a starred subcontractor)` : ' — check, then Save all as drafts'), bad > 0);
     } catch (e) { toast('Could not read that file: ' + (e.message || e), true); }
@@ -1421,7 +1446,7 @@ const ACT = {
       if (o.dev && !r.dr) { problems.push(`Row ${i + 1}: deviation needs a reason`); return; }
       const py = payeeOf(o.payee);
       payload.push({ project_id: r.p, payee_id: py.id, payee_name: py.name, category: r.c, bill_ref: r.bill.trim() || null, due_date: r.d || null, priority: r.pr,
-        gross_amount: num(r.g), tds_amount: num(r.t), other_deduction: 0, description: r.ds || null, dev_reason_code: o.dev ? r.dr : null });
+        gross_amount: num(r.g), tds_amount: num(r.t), other_deduction: 0, paying_company: r.co || null, description: r.ds || null, dev_reason_code: o.dev ? r.dr : null });
       idx.push(i);
     });
     if (problems.length) { alert('Please fix these rows first (nothing was saved):\n\n' + problems.join('\n')); return; }
@@ -1432,13 +1457,17 @@ const ACT = {
       toast(`${payload.length} draft${payload.length > 1 ? 's' : ''} saved`); await refresh(); if (S.ui.gridOpen) gUpdate();
     });
   },
+  async setco(el) {
+    await guard(async () => { await rpc('pay_set_company', { p_id: el.dataset.id, p_company: $('#dt-co').value || null }); toast('Paying company saved'); await refresh(); });
+  },
   async addpast() {
     const project = $('#pp-project').value, gross = num($('#pp-gross').value), tds = num($('#pp-tds').value), d = $('#pp-date').value, lbl = $('#pp-payee').value.trim();
     if (!project || !lbl || gross <= 0 || !d) return toast('Project, payee, amount and date paid are required', true);
+    if (!$('#pp-company').value) return toast('Select the paying company', true);
     const py = payeeOf(gPayeeId(lbl, payeeLabelMap())) || S.payees.find(x => x.name === lbl);
     await guard(async () => {
       const res = await rpc('pay_backfill_payment', { p_project: project, p_payee_id: py ? py.id : null, p_payee_name: lbl, p_category: $('#pp-cat').value, p_gross: gross, p_tds: tds,
-        p_paid_date: d, p_bank_account: $('#pp-bank').value || null, p_utr: $('#pp-utr').value.trim() || null, p_bill_ref: $('#pp-note').value.trim() || null, p_note: null });
+        p_paid_date: d, p_bank_account: $('#pp-bank').value || null, p_utr: $('#pp-utr').value.trim() || null, p_bill_ref: $('#pp-note').value.trim() || null, p_note: null, p_company: $('#pp-company').value || null });
       toast(res.counted ? 'Past payment added — headroom updated' : 'Saved, but dated before the opening position so it is not counted again', !res.counted);
       await refresh();
     });

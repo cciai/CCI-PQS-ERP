@@ -813,11 +813,14 @@ let state = {
   showProjectBin: false,
   projectBin: [],
   viewingLedgerFor: null,
+  viewingSupLedgerFor: null,
+  supLedgerPayments: [],
   ledgerBills: [],
   ledgerPayments: []
 };
 
 const MANPOWER_TYPES = ['All rounder','Gypsum','Masonry','MEP','Mivan','Reinforcement','Shuttering','Tiles','Tiling','Unskilled'];
+const PAYING_COMPANIES = ['Cameo','CCI Urban','CCI Projects','CCI Contracting Services','CCI Contracts','CCI Technical Services','CCI Engineering Services'];
 const PAYMENT_TYPE_LABELS = { advance:'Advance', against_ra_bill:'Against RA Bill', retention_release:'Retention Release', final_settlement:'Final Settlement', other:'Other' };
 const INDIAN_STATES = ['Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chhattisgarh','Goa','Gujarat','Haryana','Himachal Pradesh','Jharkhand','Karnataka','Kerala','Madhya Pradesh','Maharashtra','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Punjab','Rajasthan','Sikkim','Tamil Nadu','Telangana','Tripura','Uttar Pradesh','Uttarakhand','West Bengal','Andaman and Nicobar Islands','Chandigarh','Dadra and Nagar Haveli and Daman and Diu','Delhi','Jammu and Kashmir','Ladakh','Lakshadweep','Puducherry'];
 
@@ -977,6 +980,7 @@ async function renderSuppliersView(){
     document.getElementById('main').innerHTML = `<div class="loading">Loading suppliers…</div>`;
     await loadSuppliers();
   }
+  if(state.viewingSupLedgerFor){ renderSupplierLedger(); return; }
   if(state.supCreating || state.supEditingId){ renderSupplierForm(); return; }
   const all = state.suppliers || [];
   const cats = [...new Set(all.map(s => s.category).filter(Boolean))].sort((a,b) => a.localeCompare(b));
@@ -1134,11 +1138,51 @@ function openSupplierQuickView(s){
     ${row('Notes', s.notes)}
     <div class="modal-actions">
       <button class="btn" onclick="closeModal()">Close</button>
+      <button class="btn" id="qvSupLedgerBtn">Ledger</button>
       ${canManageSuppliers() ? `<button class="btn primary" id="qvSupEditBtn">Edit</button>` : ''}
     </div>
   `);
+  const lb = document.getElementById('qvSupLedgerBtn');
+  if(lb) lb.onclick = async () => { closeModal(); state.viewingSupLedgerFor = s; await loadSupplierLedger(s.id); renderSuppliersView(); };
   const eb = document.getElementById('qvSupEditBtn');
   if(eb) eb.onclick = () => { closeModal(); state.supEditingId = s.id; state.supCreating = false; renderSuppliersView(); };
+}
+
+async function loadSupplierLedger(supplierId){
+  try{
+    const { data, error } = await withRetry(() => sb.from('ra_payments').select('*, ra_projects(name)').eq('supplier_id', supplierId).order('date_paid', { ascending: false }));
+    if(error){ toast(error.message, true); state.supLedgerPayments = []; } else state.supLedgerPayments = data || [];
+  } catch(err){ toast('Could not load the ledger — please try again.', true); console.error(err); state.supLedgerPayments = []; }
+}
+
+function renderSupplierLedger(){
+  const sp = state.viewingSupLedgerFor, pays = state.supLedgerPayments || [];
+  const paid = pays.reduce((t,p) => t + Number(p.amount_paid||0), 0), tds = pays.reduce((t,p) => t + Number(p.tds_amount||0), 0);
+  const byCo = {}; pays.forEach(p => { const k = p.paying_company || 'Company not tagged'; byCo[k] = (byCo[k]||0) + Number(p.amount_paid||0) + Number(p.tds_amount||0); });
+  const cell = (l, v, c) => `<div style="display:flex; flex-direction:column; gap:4px;"><span class="qv-label">${l}</span><span style="font-size:16px;font-weight:700;${c?'color:'+c+';':''}">${v}</span></div>`;
+  document.getElementById('main').innerHTML = `
+    <button class="btn tiny" id="backToSupList" style="margin-bottom:14px;">← Back to Suppliers</button>
+    <div class="proj-header"><div><h1>${escapeHtml(sp.name)}</h1><div class="meta">${escapeHtml(sp.acct_code||'')} · Supplier ledger — payments made through the Payments app</div></div></div>
+    <div class="bill-summary" style="max-width:none; display:grid; grid-template-columns:repeat(4,1fr); gap:16px;">
+      ${cell('Payments', pays.length)}
+      ${cell('Paid to Supplier', '₹'+fmtNum(paid), 'var(--green)')}
+      ${cell('TDS Deducted', '₹'+fmtNum(tds), 'var(--steel)')}
+      ${cell('Last Payment', pays[0] ? pays[0].date_paid+' · ₹'+fmtNum(pays[0].amount_paid) : '—')}
+    </div>
+    ${Object.keys(byCo).length ? `<div class="wo-rate-note" style="margin:12px 0;"><b>Paid by company:</b> ${Object.entries(byCo).map(([k,v]) => escapeHtml(k)+' ₹'+fmtNum(v)).join(' · ')}</div>` : ''}
+    <h4 class="wo-lines-title">Payments (${pays.length})</h4>
+    ${pays.length ? `
+      <div class="bitem-head" style="grid-template-columns:1fr 1fr 1.2fr 1fr 1fr 1.4fr;"><span>Date</span><span>Project</span><span>Paying Company</span><span>Paid</span><span>TDS</span><span>Reference</span></div>
+      ${pays.map(p => `<div class="bitem" style="grid-template-columns:1fr 1fr 1.2fr 1fr 1fr 1.4fr;">
+        <span class="desc">${p.date_paid}</span>
+        <span class="unit">${escapeHtml((p.ra_projects||{}).name||'')}</span>
+        <span class="unit"><b>${escapeHtml(p.paying_company||'—')}</b></span>
+        <span class="qty">₹${fmtNum(p.amount_paid)}</span>
+        <span class="qty">₹${fmtNum(p.tds_amount||0)}</span>
+        <span class="unit">${escapeHtml(p.mode||'—')}${p.notes ? ' · '+escapeHtml(p.notes) : ''}</span>
+      </div>`).join('')}
+    ` : `<div class="wo-lines-empty">No payments yet. Payments marked Paid in the Payments app appear here automatically.</div>`}`;
+  document.getElementById('backToSupList').onclick = () => { state.viewingSupLedgerFor = null; renderSuppliersView(); };
 }
 
 function renderSupplierForm(){
@@ -1232,7 +1276,7 @@ function switchAppView(view){
   document.getElementById('newProjBtn').style.display = (view === 'projects' && canEditBudget()) ? 'block' : 'none';
   renderProjectSubNav();
   if(view === 'subcontractors'){
-    state.scCreating = false; state.scEditingId = null; state.viewingLedgerFor = null;
+    state.scCreating = false; state.scEditingId = null; state.viewingLedgerFor = null; state.viewingSupLedgerFor = null;
     renderSubcontractorsView();
   } else if(view === 'suppliers'){
     state.supCreating = false; state.supEditingId = null;
@@ -2408,6 +2452,9 @@ function renderSubcontractorLedger(){
         <div class="field"><label>Paid Amount ₹ (to vendor's account)</label><input id="ledgerPayAmount" type="number" inputmode="decimal" step="0.01"></div>
         <div class="field"><label>TDS Amount ₹ (deducted this payment)</label><input id="ledgerPayTds" type="number" inputmode="decimal" step="0.01" value="0"></div>
         <div class="field"><label>Mode</label><input id="ledgerPayMode" placeholder="NEFT / RTGS / Cheque / Cash"></div>
+        <div class="field"><label>Paying Company (compulsory)</label>
+          <select id="ledgerPayCompany"><option value="" disabled selected>Select company</option>${PAYING_COMPANIES.map(c=>`<option>${escapeHtml(c)}</option>`).join('')}</select>
+        </div>
       </div>
       <div class="field"><label>Notes (optional)</label><input id="ledgerPayNotes" placeholder="e.g. against RA Bill #4"></div>
       <button class="btn primary" id="ledgerRecordPayBtn">Record Payment</button>
@@ -2427,11 +2474,12 @@ function renderSubcontractorLedger(){
 
     <h4 class="wo-lines-title">Payments (${payments.length})</h4>
     ${payments.length ? `
-      <div class="bitem-head" style="grid-template-columns:1fr 1fr 1fr 1fr 1fr 1fr;"><span>Date</span><span>Project</span><span>Type</span><span>Paid</span><span>TDS</span><span>Mode / Notes</span></div>
-      ${payments.map(p => `<div class="bitem" style="grid-template-columns:1fr 1fr 1fr 1fr 1fr 1fr;">
+      <div class="bitem-head" style="grid-template-columns:1fr 1fr 1fr 1.2fr 1fr 1fr 1fr;"><span>Date</span><span>Project</span><span>Type</span><span>Paying Company</span><span>Paid</span><span>TDS</span><span>Mode / Notes</span></div>
+      ${payments.map(p => `<div class="bitem" style="grid-template-columns:1fr 1fr 1fr 1.2fr 1fr 1fr 1fr;">
         <span class="desc">${p.date_paid}</span>
         <span class="unit">${escapeHtml((p.ra_projects||{}).name || '')}</span>
         <span class="unit">${escapeHtml(PAYMENT_TYPE_LABELS[p.payment_type] || '—')}</span>
+        <span class="unit"><b>${escapeHtml(p.paying_company || '—')}</b></span>
         <span class="qty">₹${fmtNum(p.amount_paid)}</span>
         <span class="qty">₹${fmtNum(p.tds_amount||0)}</span>
         <span class="unit">${escapeHtml(p.mode||'—')}${p.notes ? ' · '+escapeHtml(p.notes) : ''}</span>
@@ -2449,11 +2497,13 @@ function renderSubcontractorLedger(){
     const date = document.getElementById('ledgerPayDate').value;
     const mode = document.getElementById('ledgerPayMode').value.trim();
     const notes = document.getElementById('ledgerPayNotes').value.trim();
+    const company = document.getElementById('ledgerPayCompany').value;
+    if(!company){ toast('Select the paying company.', true); return; }
     if(!projectId){ toast('Project is compulsory for every payment.', true); return; }
     if(isNaN(amount) || amount <= 0){ toast('Enter a valid paid amount.', true); return; }
     if(!date){ toast('Pick a date.', true); return; }
     recordBtn.disabled = true; recordBtn.textContent = 'Recording…';
-    const ok = await recordPayment(sc.id, amount, date, mode, projectId, notes, tds, paymentType);
+    const ok = await recordPayment(sc.id, amount, date, mode, projectId, notes, tds, paymentType, company);
     if(ok){ await loadSubcontractorLedger(sc.id); renderSubcontractorLedger(); return; }
     recordBtn.disabled = false; recordBtn.textContent = 'Record Payment';
   };
@@ -3587,12 +3637,12 @@ async function approveBill(billId){
   } catch(err){ toast('Could not reach the server — please try again.', true); console.error(err); }
 }
 
-async function recordPayment(subcontractorId, amount_paid, date_paid, mode, projectId, notes, tds_amount, payment_type){
+async function recordPayment(subcontractorId, amount_paid, date_paid, mode, projectId, notes, tds_amount, payment_type, paying_company){
   try{
     const { data: { user } } = await withRetry(() => sb.auth.getUser());
     const { error } = await withRetry(() => sb.from('ra_payments').insert({
       subcontractor_id: subcontractorId, amount_paid, date_paid, mode: mode || null,
-      project_id: projectId, notes: notes || null, tds_amount: tds_amount || 0, payment_type: payment_type || null, entered_by: user.id
+      project_id: projectId, notes: notes || null, tds_amount: tds_amount || 0, payment_type: payment_type || null, paying_company: paying_company || null, entered_by: user.id
     }));
     if(error){ toast(error.message, true); return false; }
     toast('Payment recorded.');
