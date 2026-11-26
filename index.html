@@ -424,6 +424,9 @@
   .wo-doc-table th{ background:#EFF2F7; font-size:9.5px; text-transform:uppercase; letter-spacing:.03em; }
   .wo-doc-table td.num{ text-align:right; white-space:nowrap; }
   .wo-doc-deduct{ width:100%; }
+  .wo-doc-draftmark small{ display:block; font-size:34px; letter-spacing:.2em; margin-top:6px; }
+  .wo-doc-draftnote{ border:2px solid #B3261E; color:#B3261E; font-weight:700; text-align:center; padding:6px 10px; margin:8px 0 10px; font-size:12px; letter-spacing:.04em; }
+  .wo-doc-draftmark{ position:fixed; top:42%; left:0; right:0; text-align:center; transform:rotate(-30deg); font-size:130px; font-weight:800; color:rgba(179,38,30,0.13); letter-spacing:.15em; line-height:1; z-index:0; pointer-events:none; }
   .wo-doc-deduct-lines{ font-size:9px; line-height:1.45; font-weight:400; margin-top:2px; }
   .wo-doc-table-narrow{ width:auto; min-width:280px; max-width:360px; }
   .wo-doc-scope{ font-size:10px; color:#000; margin-top:4px; white-space:pre-wrap; }
@@ -3475,6 +3478,7 @@ function printBill(bill, wo, lines, subTotal, retentionAmt, tdsAmt, safetyAmt, d
   document.getElementById('printArea').innerHTML = `
     <div class="wo-doc">
       ${buildPrintHeader(false)}
+      ${(bill.status==='approved'||bill.status==='paid'||bill.finalized_at) ? '' : `<div class="wo-doc-draftmark">DRAFT<small>NOT APPROVED</small></div><div class="wo-doc-draftnote">THIS IS A DRAFT BILL — NOT APPROVED. For review only; not valid for payment.</div>`}
       <div class="wo-doc-title">SUB-CONTRACTOR BILL</div>
       <div class="wo-doc-meta">
         <div><div class="l">Bill No</div>${escapeHtml(bill.bill_ref||String(bill.project_bill_no||''))}</div>
