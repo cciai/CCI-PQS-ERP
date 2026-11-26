@@ -291,8 +291,8 @@ function tabsFor() {
   const T = {
     owner: [['dash', 'Dashboard'], ['reqs', 'Requests'], ['register', 'Payments register'], ['appr', 'CEO queue', n.ceo], ['batches', 'Batches', n.batch], ['inflow', 'Inflows & limits'], ['auto', 'Auto payment sheet'], ['payees', 'Payees'], ['audit', 'Audit'], ['admin', 'Admin']],
     accounts: [['dash', 'Dashboard'], ['reqs', 'Requests'], ['register', 'Payments register'], ['batches', 'Batches', n.batch], ['inflow', 'Inflows'], ['auto', 'Auto payment sheet'], ['payees', 'Payees'], ['audit', 'Audit']],
-    ceo: [['appr', 'Approvals', n.ceo], ['register', 'Payments register'], ['dash', 'Dashboard']],
-    partner: [['verify', 'Verify batches', n.partner], ['register', 'Payments register'], ['dash', 'Dashboard']]
+    ceo: [['appr', 'Approvals', n.ceo], ['dash', 'Dashboard']],
+    partner: [['verify', 'Verify batches', n.partner], ['dash', 'Dashboard']]
   };
   return T[role()] || [];
 }
@@ -313,6 +313,7 @@ async function renderMain() {
   const V = { dash: vDash, reqs: vReqs, appr: vAppr, batches: vBatches, inflow: vInflow, payees: vPayees, audit: vAudit, admin: vAdmin, verify: vVerify, auto: vAuto, register: vRegister };
   if (S.tab === 'auto' && !A().loaded && !A().loading) { setTimeout(autoLoad, 0); }
   if (S.tab === 'audit' && !S.audit.length) { await guard(async () => { S.audit = await qry(sb.from('pay_audit').select('*').order('at', { ascending: false }).limit(500)); }); }
+  if (S.tab === 'register' && !['owner', 'accounts'].includes(role())) S.tab = defaultTab();
   m.innerHTML = (V[S.tab] || vDash)();
   if (S.tab === 'reqs' && S.ui.gridOpen) gUpdate();
 }
