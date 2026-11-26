@@ -527,7 +527,7 @@ const LG = {};
 async function loadLedger(subId) {
   const c = LG[subId]; if (c && Date.now() - c.t < 60000) return c.d;
   const [bills, pays] = await Promise.all([
-    qry(sb.from('ra_bills').select('id,bill_no,period_from,period_to,status,debit_amount,gst_pct,ra_work_orders!inner(wo_ref,subcontractor_id,retention_pct,tds_pct,safety_pct,safety_amount,gst_pct,ra_projects(name)),ra_bill_line_entries(this_qty,ra_wo_line_items(agreed_rate))')
+    qry(sb.from('ra_bills').select('id,bill_no,bill_ref,period_from,period_to,status,debit_amount,gst_pct,ra_work_orders!inner(wo_ref,subcontractor_id,retention_pct,tds_pct,safety_pct,safety_amount,gst_pct,ra_projects(name)),ra_bill_line_entries(this_qty,ra_wo_line_items(agreed_rate))')
       .eq('ra_work_orders.subcontractor_id', subId).in('status', ['submitted', 'approved', 'paid']).is('deleted_at', null).order('period_to', { ascending: true })),
     qry(sb.from('ra_payments').select('id,bill_id,amount_paid,tds_amount,date_paid,payment_type,paying_company').eq('subcontractor_id', subId).order('date_paid', { ascending: true }))
   ]);
@@ -536,7 +536,7 @@ async function loadLedger(subId) {
     const sub = (b.ra_bill_line_entries || []).reduce((t, e) => t + num(e.this_qty) * num((e.ra_wo_line_items || {}).agreed_rate), 0);
     const ded = sub * ((num(wo.retention_pct) + num(wo.tds_pct) + num(wo.safety_pct)) / 100) + (wo.safety_pct ? 0 : num(wo.safety_amount)) + num(b.debit_amount);
     const gp = (b.gst_pct !== null && b.gst_pct !== undefined) ? num(b.gst_pct) : num(wo.gst_pct);
-    return { id: b.id, short: `RA ${b.bill_no} · ${wo.wo_ref || ''}`.trim(), project: (wo.ra_projects || {}).name || '', to: b.period_to, status: b.status, net: sub - ded + sub * gp / 100, direct: 0, alloc: 0 };
+    return { id: b.id, short: `${b.bill_ref || 'Bill ' + b.bill_no} · ${wo.wo_ref || ''}`.trim(), project: (wo.ra_projects || {}).name || '', to: b.period_to, status: b.status, net: sub - ded + sub * gp / 100, direct: 0, alloc: 0 };
   });
   const P = (pays || []);
   // TDS noted on a payment counts as settled only beyond what the bills already deducted as TDS (a bill's net is already after its own TDS)
@@ -910,8 +910,7 @@ function vInflow() {
     <div class="grid3"><div class="field"><label>Gross amount (₹)</label><input id="pp-gross" type="number" step="0.01" min="0"></div>
       <div class="field"><label>TDS (₹)</label><input id="pp-tds" type="number" step="0.01" min="0" value="0"></div>
       <div class="field"><label>Date paid</label><input id="pp-date" type="date" value="${todayISO()}" max="${todayISO()}"></div></div>
-    <div class="field"><label>Paying company</label><select id="pp-company">${coOpts('')}</select></div>
-    <div class="grid3"><div class="field"><label>Paid from</label><select id="pp-bank"><option value="">—</option>${S.banks.map(b => `<option value="${b.id}">${esc(b.label)}</option>`).join('')}</select></div>
+    <div class="grid3"><div class="field"><label>Paid from company</label><select id="pp-company">${coOpts('')}</select></div>
       <div class="field"><label>UTR / reference (optional)</label><input id="pp-utr"></div>
       <div class="field"><label>Bill ref / note (optional)</label><input id="pp-note"></div></div>
     <button class="btn p" data-act="addpast">Add past payment</button>
@@ -1471,7 +1470,7 @@ const ACT = {
     const py = payeeOf(gPayeeId(lbl, payeeLabelMap())) || S.payees.find(x => x.name === lbl);
     await guard(async () => {
       const res = await rpc('pay_backfill_payment', { p_project: project, p_payee_id: py ? py.id : null, p_payee_name: lbl, p_category: $('#pp-cat').value, p_gross: gross, p_tds: tds,
-        p_paid_date: d, p_bank_account: $('#pp-bank').value || null, p_utr: $('#pp-utr').value.trim() || null, p_bill_ref: $('#pp-note').value.trim() || null, p_note: null, p_company: $('#pp-company').value || null });
+        p_paid_date: d, p_bank_account: null, p_utr: $('#pp-utr').value.trim() || null, p_bill_ref: $('#pp-note').value.trim() || null, p_note: null, p_company: $('#pp-company').value || null });
       toast(res.counted ? 'Past payment added — headroom updated' : 'Saved, but dated before the opening position so it is not counted again', !res.counted);
       await refresh();
     });
