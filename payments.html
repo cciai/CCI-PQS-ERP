@@ -539,7 +539,11 @@ async function loadLedger(subId) {
     return { id: b.id, short: `RA ${b.bill_no} · ${wo.wo_ref || ''}`.trim(), project: (wo.ra_projects || {}).name || '', to: b.period_to, status: b.status, net: sub - ded + sub * gp / 100, direct: 0, alloc: 0 };
   });
   const P = (pays || []);
-  const settledOf = p => num(p.amount_paid) + num(p.tds_amount);
+  // TDS noted on a payment counts as settled only beyond what the bills already deducted as TDS (a bill's net is already after its own TDS)
+  const billTds = (bills || []).reduce((t, b) => { const wo = b.ra_work_orders || {}; return t + (b.ra_bill_line_entries || []).reduce((q, e) => q + num(e.this_qty) * num((e.ra_wo_line_items || {}).agreed_rate), 0) * num(wo.tds_pct) / 100; }, 0);
+  const payTds = (pays || []).reduce((t, p) => t + num(p.tds_amount), 0);
+  const tdsF = payTds > 0 ? Math.max(0, payTds - billTds) / payTds : 0;
+  const settledOf = p => num(p.amount_paid) + num(p.tds_amount) * tdsF;
   P.filter(p => p.bill_id).forEach(p => { const b = B.find(x => x.id === p.bill_id); if (b) b.direct += settledOf(p); });
   let pool = sum(P.filter(p => !p.bill_id || !B.find(x => x.id === p.bill_id)), settledOf);
   B.forEach(b => { const room = Math.max(b.net - b.direct, 0); const a = Math.min(room, pool); b.alloc = a; pool -= a; });

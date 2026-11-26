@@ -2411,7 +2411,7 @@ async function loadSubcontractorLedger(subcontractorId){
         const deductions = subTotal * ((wo.retention_pct||0)+(wo.tds_pct||0)+(wo.safety_pct||0))/100 + (wo.safety_pct ? 0 : (wo.safety_amount||0)) + Number(b.debit_amount||0);
         const effGstPct = (b.gst_pct !== null && b.gst_pct !== undefined) ? Number(b.gst_pct) : Number(wo.gst_pct||0);
         const gstAmt = subTotal * effGstPct/100;
-        return { ...b, _projectName: (wo.ra_projects||{}).name || '', _woRef: wo.wo_ref || '', _net: subTotal - deductions + gstAmt };
+        return { ...b, _projectName: (wo.ra_projects||{}).name || '', _woRef: wo.wo_ref || '', _net: subTotal - deductions + gstAmt, _billTds: subTotal * Number(wo.tds_pct||0) / 100 };
       });
     }
 
@@ -2431,7 +2431,10 @@ function renderSubcontractorLedger(){
   const totalBilled = bills.reduce((s,b) => s + b._net, 0);
   const totalPaidToVendor = payments.reduce((s,p) => s + Number(p.amount_paid), 0);
   const totalTds = payments.reduce((s,p) => s + Number(p.tds_amount||0), 0);
-  const totalSettled = totalPaidToVendor + totalTds; // both reduce what's owed — TDS just goes to the govt instead of the vendor
+  // TDS recorded on payments reduces what is owed only where the bills have not already deducted it (a bill's own TDS is already out of its net) — otherwise it would be counted twice.
+  const billTdsDeducted = bills.reduce((s,b) => s + Number(b._billTds||0), 0);
+  const tdsCredited = Math.max(0, totalTds - billTdsDeducted);
+  const totalSettled = totalPaidToVendor + tdsCredited;
   const outstanding = totalBilled - totalSettled;
   const lastPayment = payments[0];
 
