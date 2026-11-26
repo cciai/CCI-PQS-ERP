@@ -3288,9 +3288,15 @@ function renderBillEntry(project){
     state.currentBillId = null;
     if(state.billEntryReturnTo === 'bills'){
       state.viewingWOId = null;
+      state.woDetail = null;
+      state.activeTab = 'bills';
+      state.showBin = false;
       await loadAllBills(state.selectedProjectId);
       state.billsCacheProjectId = state.selectedProjectId;
+    } else {
+      state.activeTab = 'workorders';
     }
+    renderProjectSubNav();
     renderMain();
   };
   const deleteBtn = document.getElementById('deleteBillBtn');
