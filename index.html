@@ -2486,7 +2486,7 @@ function renderSubcontractorLedger(){
       <div class="bitem-head" style="grid-template-columns:1fr 1fr 90px 90px 100px;"><span>Project</span><span>WO / Bill</span><span class="qty">Period</span><span class="rate">Status</span><span class="amount">Net ₹</span></div>
       ${bills.map(b => `<div class="bitem" style="grid-template-columns:1fr 1fr 90px 90px 100px;">
         <span class="desc">${escapeHtml(b._projectName)}</span>
-        <span class="unit">${escapeHtml(b._woRef)} · ${escapeHtml(b.bill_ref||('Bill #'+(b.project_bill_no||'—')))} · Sub bill ${b.bill_no}</span>
+        <span class="unit">${escapeHtml(b._woRef)} · ${escapeHtml(b.bill_ref||('Bill #'+(b.bill_no||'—')))} · Project bill ${b.project_bill_no||'—'}</span>
         <span class="qty">${b.period_to||''}</span>
         <span class="rate">${b.status}</span>
         <span class="amount">₹${fmtNum(b._net)}</span>
@@ -2963,7 +2963,7 @@ function renderWODetail(project){
     row.className = 'wo-card';
     row.innerHTML = `
       <div class="wo-card-main">
-        <div class="wo-sc-name">${escapeHtml(b.bill_ref||('Bill #'+(b.project_bill_no||'—')))} <span style="font-weight:400;font-size:12px;">· Sub bill ${b.bill_no}</span></div>
+        <div class="wo-sc-name">${escapeHtml(b.bill_ref||('Bill #'+(b.bill_no||'—')))} <span style="font-weight:400;font-size:12px;">· Project bill ${b.project_bill_no||'—'}</span></div>
         <div class="wo-meta">${b.period_from||'—'} to ${b.period_to||'—'}</div>
       </div>
       <div class="wo-card-rates">
@@ -3210,7 +3210,7 @@ function renderBillEntry(project){
     <button class="btn tiny" id="backToWO" style="margin-bottom:14px;">${state.billEntryReturnTo === 'bills' ? '← Back to Bills' : '← Back to Work Order'}</button>
     <div class="wo-form">
       <h3 class="wo-form-title">
-        ${escapeHtml(bill.bill_ref||('Bill #'+(bill.project_bill_no||'—')))} <span style="font-weight:400;font-size:14px;">· Sub bill ${bill.bill_no}</span> <span class="badge ${bill.status==='draft'?'internal':'billable'}">${bill.status}</span>${isFinalized ? ` <span class="finalized-chip" title="Finalized ${new Date(bill.finalized_at).toLocaleDateString('en-IN')}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Finalized</span>` : ''}
+        ${escapeHtml(bill.bill_ref||('Bill #'+(bill.bill_no||'—')))} <span style="font-weight:400;font-size:14px;">· Project bill ${bill.project_bill_no||'—'}</span> <span class="badge ${bill.status==='draft'?'internal':'billable'}">${bill.status}</span>${isFinalized ? ` <span class="finalized-chip" title="Finalized ${new Date(bill.finalized_at).toLocaleDateString('en-IN')}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Finalized</span>` : ''}
         <button class="btn tiny" id="printBillBtn" style="font-weight:600;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> Print / Download PDF</button>
         ${canDelete ? `<button class="icon-btn" id="deleteBillBtn" title="Delete bill" style="font-size:14px;">✕</button>` : ''}
       </h3>
@@ -3478,7 +3478,7 @@ function printBill(bill, wo, lines, subTotal, retentionAmt, tdsAmt, safetyAmt, d
       <div class="wo-doc-title">SUB-CONTRACTOR BILL</div>
       <div class="wo-doc-meta">
         <div><div class="l">Bill No</div>${escapeHtml(bill.bill_ref||String(bill.project_bill_no||''))}</div>
-        <div><div class="l">Subcontractor Bill No</div>${bill.bill_no}</div>
+        <div><div class="l">Project Bill No</div>${bill.project_bill_no||''}</div>
         <div><div class="l">Bill Period</div>${bill.period_from} to ${bill.period_to}</div>
         <div><div class="l">Status</div>${bill.status.toUpperCase()}</div>
       </div>
@@ -3840,7 +3840,7 @@ function renderBillsTab(project){
   };
   document.getElementById('billsExportCsvBtn').onclick = () => {
     const rows = bills.map(b => ({
-      'Bill No': b.bill_ref || b.project_bill_no || '', 'Subcontractor Bill No': b.bill_no, 'WO Ref': (b.ra_work_orders||{}).wo_ref || '',
+      'Bill No': b.bill_ref || b.bill_no || '', 'Project Bill No': b.project_bill_no, 'WO Ref': (b.ra_work_orders||{}).wo_ref || '',
       'Subcontractor': ((b.ra_work_orders||{}).ra_subcontractors||{}).name || '',
       'Period From': b.period_from, 'Period To': b.period_to, 'Status': b.status,
       'Net Payable': b._net.toFixed(2)
@@ -3873,7 +3873,7 @@ function renderBillsTab(project){
         const canShowFinalize = (b.status === 'approved' || b.status === 'paid');
         return `
         <tr class="data-row" data-bill="${b.id}" data-wo="${b.wo_id}" style="cursor:pointer;">
-          <td>${escapeHtml(b.bill_ref||('#'+(b.project_bill_no||'—')))} <span class="u">Sub bill ${b.bill_no}</span></td>
+          <td>${escapeHtml(b.bill_ref||('#'+(b.project_bill_no||'—')))} <span class="u">Project bill ${b.project_bill_no||'—'}</span></td>
           <td>${escapeHtml(sc.name||'')} <span class="u">${escapeHtml(sc.acct_code||'')}</span></td>
           <td>${escapeHtml(wo.wo_ref||'')}</td>
           <td>${b.period_from||'—'} to ${b.period_to||'—'}</td>
@@ -3951,7 +3951,7 @@ function renderBinView(project){
     row.className = 'wo-card';
     row.innerHTML = `
       <div class="wo-card-main">
-        <div class="wo-sc-name">${escapeHtml(b.bill_ref||('Bill #'+(b.project_bill_no||'—')))} (Sub bill ${b.bill_no}) — ${escapeHtml(sc.name||'')}</div>
+        <div class="wo-sc-name">${escapeHtml(b.bill_ref||('Bill #'+(b.bill_no||'—')))} (Project bill ${b.project_bill_no||'—'}) — ${escapeHtml(sc.name||'')}</div>
         <div class="wo-meta">${escapeHtml((b.ra_work_orders||{}).wo_ref||'')} · Deleted ${new Date(b.deleted_at).toLocaleDateString('en-IN')} · was ${b.status}</div>
       </div>
       <div class="wo-card-rates">
