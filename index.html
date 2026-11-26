@@ -606,7 +606,17 @@ const WO_ACTIVITY_LIB = [
     ['Wastage & reconciliation', 'Steel issued shall be reconciled against the BBS for each pour/floor. Cutting waste/shortage beyond the wastage norm notified by the Contractor shall be recovered at the Contractor\'s purchase cost. Off-cuts and scrap shall be returned to the store.'],
     ['Quality & rework', 'Wrongly cut, bent or placed bars shall be corrected at the Subcontractor\'s cost; no heating or re-bending of TMT bars without written approval.'],
   ]},
-  { key: 'concrete', title: 'CONCRETING', re: /concret|\brmc\b|pour|pump|curing|\bpcc\b|\brcc\b/i, pts: [
+  { key: 'concrete_pcc', title: 'CONCRETING – PCC', re: /\bpcc\b|p\.c\.c|plain cement|lean concrete|blinding/i, pts: [
+    ['Scope', 'Preparation and compaction of the sub-grade/bed, shuttering of edges and level pegs, receiving, placing, spreading, compacting, levelling and curing of plain cement concrete (PCC) / lean concrete / blinding layer to the thickness, grade and levels shown in the drawings, including cleaning of the bed and removal of loose soil, water and slush before placing.'],
+    ['Materials & machinery', 'Concrete (RMC or site-mixed), polythene sheet, spacers/level pegs, and power are provided by the Contractor unless stated otherwise. Hand tools, vibrators/screed boards, straight-edges, trained gangs and curing labour are by the Subcontractor.'],
+    ['Standards', 'IS 456:2000 and IS 10262 for plain concrete and the specified grade (e.g. M7.5 / M10 / M15 / M20). No water shall be added at site to the mix. PCC shall be placed within the initial setting time and shall not be placed on soft, loose or water-logged ground.'],
+    ['Levels & thickness', 'Top level, thickness, slope and plan dimensions shall be checked with level pegs / dumpy level before and after placing. Under-thickness, uneven or out-of-level PCC shall be rectified at the Subcontractor\'s cost. Excess thickness will not be measured.'],
+    ['Pour clearance', 'PCC shall be poured only after the Contractor\'s engineer has cleared the excavation bed (levels, dimensions, bottom cleaning). The Subcontractor shall give advance notice and keep sufficient gangs ready so that the pour is completed continuously.'],
+    ['Curing', 'Curing shall be continuous for not less than 7 days (10 days or more for mineral-admixture cement) and the surface protected from rain, traffic and damage. Failure to cure is a defect to be rectified at the Subcontractor\'s cost.'],
+    ['Measurement', 'Net volume (cum) = plan area x thickness as per drawings and as jointly measured and certified. Excess spread beyond the drawing size, spillage and wastage are not measured.'],
+    ['Quality & rework', 'Honeycombing, segregation, cracks, surface defects and level errors caused by the Subcontractor shall be repaired or broken out and re-cast at its cost. Concrete wasted by spillage or poor planning beyond the notified norm shall be recovered at cost.'],
+  ]},
+  { key: 'concrete_rcc', title: 'CONCRETING – RCC', re: /concret|\brmc\b|pour|pump|curing|\brcc\b|reinforced cement/i, pts: [
     ['Scope', 'Receiving, placing, spreading, compacting (needle/surface vibrators), levelling, finishing and curing of concrete including construction-joint preparation, pour-stopper fixing, removal of laitance, slab finishing to level, protection from rain/sun and cleaning of equipment and surroundings after the pour.'],
     ['Materials & machinery', 'Concrete (RMC or site-mixed), pump/placing boom, vibrators and power are provided by the Contractor unless stated otherwise. Sufficient trained gangs, hand tools, finishing tools and curing labour are by the Subcontractor.'],
     ['Standards', 'IS 456:2000 (placing, compaction, curing, construction joints, cube testing) and approved mix design. No water shall be added at site to the mix. Concrete shall be placed within the initial setting time.'],
@@ -4684,7 +4694,8 @@ function renderNewWOForm(project, editingWOId){
   const WO_QUICK = {
     shuttering:    ['Shuttering – erection, alignment, propping & stripping', 'P.sft'],
     reinforcement: ['Reinforcement – cutting, bending & fixing', 'MT'],
-    concrete:      ['Concreting – placing, vibrating, finishing & curing', 'm3'],
+    concrete_pcc:  ['Concreting PCC – laying, levelling & curing', 'm3'],
+    concrete_rcc:  ['Concreting RCC – placing, vibrating, finishing & curing', 'm3'],
     blockwork:     ['Blockwork / masonry', 'm3'],
     plaster:       ['Plastering', 'P.sft'],
     scaffolding:   ['Scaffolding / working platform', 'P.sft'],
