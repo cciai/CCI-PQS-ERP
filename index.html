@@ -4590,7 +4590,7 @@ function renderNewWOForm(project, editingWOId){
             <div id="woScSelected" class="wo-sc-selected" style="display:none;"></div>
           `}
         </div>
-        <div class="field"><label>WO Reference No.</label><input id="woRef" placeholder="e.g. WO-014" value="${editing?escapeHtml(editWO.wo_ref):''}"></div>
+        <div class="field"><label>WO Reference No. <span style="font-weight:400;">(auto-generated)</span></label><input id="woRef" readonly style="background:var(--bg-soft,#f3f3f3);cursor:not-allowed;" placeholder="Assigned automatically when the WO is created" value="${editing && !/^DRAFT-/.test(editWO.wo_ref||'') ? escapeHtml(editWO.wo_ref) : ''}"></div>
         <div class="field"><label>WO Date</label><input id="woDate" type="date" value="${editing?editWO.wo_date:''}"></div>
         <div class="field"><label>Nature of Work</label><input id="woNature" placeholder="e.g. RCC Structure Work" value="${editing?escapeHtml(editWO.nature_of_work||''):''}"></div>
       </div>
@@ -4817,7 +4817,6 @@ function renderNewWOForm(project, editingWOId){
       const dropped = state.newWOLines.filter(l => !(l.description||'').trim() || !l.agreed_rate).length;
       if(dropped){ state.newWOLines = state.newWOLines.filter(l => (l.description||'').trim() && l.agreed_rate); toast(dropped + ' incomplete line(s) were left out of the draft.'); }
     } else {
-      if(!wo_ref){ toast('WO reference number is required.', true); return; }
       if(!wo_date){ toast('WO date is required.', true); return; }
       if(!state.newWOLines.length){ toast('Add at least one line item.', true); return; }
       if(state.newWOLines.some(l => !(l.description||'').trim())){ toast('Every line item needs a description.', true); return; }
