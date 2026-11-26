@@ -2428,6 +2428,35 @@ async function loadSubcontractorLedger(subcontractorId){
   } catch(err){ toast('Could not load the ledger — please try again.', true); console.error(err); }
 }
 
+function downloadLedgerCsv(sc, bills, payments, t){
+  const rows = [];
+  bills.forEach(b => rows.push({ 'Section':'Bill', 'Date': b.period_to||'', 'Project': b._projectName||'', 'Reference': `${b._woRef||''} · ${b.bill_ref||('Bill '+(b.bill_no||''))} (Project bill ${b.project_bill_no||''})`, 'Type / Status': b.status, 'Paying Company':'', 'Billed (Net)': Number(b._net).toFixed(2), 'Paid':'', 'TDS':'', 'Mode / Notes':'' }));
+  [...payments].reverse().forEach(p => rows.push({ 'Section':'Payment', 'Date': p.date_paid, 'Project': (p.ra_projects||{}).name||'', 'Reference':'', 'Type / Status': PAYMENT_TYPE_LABELS[p.payment_type]||'', 'Paying Company': p.paying_company||'', 'Billed (Net)':'', 'Paid': Number(p.amount_paid).toFixed(2), 'TDS': Number(p.tds_amount||0).toFixed(2), 'Mode / Notes': [p.mode, p.notes].filter(Boolean).join(' · ') }));
+  rows.push({ 'Section':'TOTAL', 'Billed (Net)': t.totalBilled.toFixed(2), 'Paid': t.totalPaidToVendor.toFixed(2), 'TDS': t.totalTds.toFixed(2), 'Mode / Notes': 'Outstanding ' + t.outstanding.toFixed(2) });
+  downloadCSV(`${(sc.acct_code||'')}_${sc.name.replace(/\s+/g,'_')}_Ledger_${new Date().toISOString().slice(0,10)}.csv`,
+    ['Section','Date','Project','Reference','Type / Status','Paying Company','Billed (Net)','Paid','TDS','Mode / Notes'], rows);
+}
+function printSubcontractorLedger(sc, bills, payments, t){
+  const bRows = bills.map(b => `<tr><td>${escapeHtml(b._projectName||'')}</td><td>${escapeHtml(b._woRef||'')} · ${escapeHtml(b.bill_ref||('Bill '+(b.bill_no||'')))}</td><td>${b.period_to||''}</td><td>${escapeHtml(b.status)}</td><td class="num">${fmtNum(b._net)}</td></tr>`).join('') || '<tr><td colspan="5">No bills</td></tr>';
+  const pRows = [...payments].reverse().map(p => `<tr><td>${p.date_paid}</td><td>${escapeHtml((p.ra_projects||{}).name||'')}</td><td>${escapeHtml(PAYMENT_TYPE_LABELS[p.payment_type]||'—')}</td><td>${escapeHtml(p.paying_company||'—')}</td><td class="num">${fmtNum(p.amount_paid)}</td><td class="num">${fmtNum(p.tds_amount||0)}</td><td>${escapeHtml([p.mode,p.notes].filter(Boolean).join(' · '))}</td></tr>`).join('') || '<tr><td colspan="7">No payments</td></tr>';
+  document.getElementById('printArea').innerHTML = `
+    <div class="wo-doc">
+      ${buildPrintHeader(false)}
+      <div class="wo-doc-title">SUBCONTRACTOR LEDGER</div>
+      <div style="font-size:12px;margin-bottom:10px;"><b>${escapeHtml(sc.name)}</b> (${escapeHtml(sc.acct_code||'')}) · Statement as on ${printFileDate()}</div>
+      <table class="wo-doc-table" style="margin-bottom:12px;"><tbody>
+        <tr><td>Total Billed (net)</td><td class="num">₹${fmtNum(t.totalBilled)}</td><td>Paid to Vendor</td><td class="num">₹${fmtNum(t.totalPaidToVendor)}</td></tr>
+        <tr><td>TDS Deducted</td><td class="num">₹${fmtNum(t.totalTds)}</td><td><b>Outstanding</b></td><td class="num"><b>₹${fmtNum(t.outstanding)}</b></td></tr>
+      </tbody></table>
+      <h3 class="section">Bills</h3>
+      <table class="wo-doc-table"><thead><tr><th>Project</th><th>WO / Bill</th><th>Period to</th><th>Status</th><th>Net ₹</th></tr></thead><tbody>${bRows}</tbody></table>
+      <h3 class="section">Payments</h3>
+      <table class="wo-doc-table"><thead><tr><th>Date</th><th>Project</th><th>Type</th><th>Paying Company</th><th>Paid ₹</th><th>TDS ₹</th><th>Mode / Notes</th></tr></thead><tbody>${pRows}</tbody></table>
+      ${buildPrintFooter()}
+    </div>`;
+  setTimeout(() => printWithFilename(`${sc.acct_code||''} ${sc.name} Ledger ${printFileDate()}`), 100);
+}
+
 function renderSubcontractorLedger(){
   const sc = state.viewingLedgerFor;
   const main = document.getElementById('main');
@@ -2447,6 +2476,7 @@ function renderSubcontractorLedger(){
     <button class="btn tiny" id="backToScList" style="margin-bottom:14px;">← Back to Subcontractors</button>
     <div class="proj-header">
       <div><h1>${escapeHtml(sc.name)}</h1><div class="meta">${escapeHtml(sc.acct_code)} · Ledger (on account)</div></div>
+      <div style="display:flex;gap:8px;"><button class="btn" id="ledgerCsvBtn">⬇ CSV</button><button class="btn" id="ledgerPdfBtn">🖨 PDF</button></div>
     </div>
 
     <div class="bill-summary" style="max-width:none; display:grid; grid-template-columns:repeat(5,1fr); gap:16px;">
@@ -2512,6 +2542,9 @@ function renderSubcontractorLedger(){
   `;
 
   document.getElementById('backToScList').onclick = () => { state.viewingLedgerFor = null; renderSubcontractorsView(); };
+  const ledgerTotals = { totalBilled, totalPaidToVendor, totalTds, tdsCredited, outstanding };
+  document.getElementById('ledgerCsvBtn').onclick = () => downloadLedgerCsv(sc, bills, payments, ledgerTotals);
+  document.getElementById('ledgerPdfBtn').onclick = () => printSubcontractorLedger(sc, bills, payments, ledgerTotals);
   const recordBtn = document.getElementById('ledgerRecordPayBtn');
   if(recordBtn) recordBtn.onclick = async () => {
     const projectId = document.getElementById('ledgerPayProject').value;
