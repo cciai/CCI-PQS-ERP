@@ -310,6 +310,11 @@
   .stage-add-radios label{ display:flex; align-items:center; gap:5px; font-size:12.5px; color:var(--ink); white-space:nowrap; }
   .stage-add-radios input[type="radio"]{ width:auto; }
 
+  .stage-row.dragging{ opacity:.4; }
+  .stage-row.drop-before{ box-shadow:0 -3px 0 0 var(--amber); }
+  .stage-row.drop-after{ box-shadow:0 3px 0 0 var(--amber); }
+  .stage-row.drop-inside{ background:rgba(226,134,30,0.14); box-shadow:inset 0 0 0 2px var(--amber); }
+  .drag-grip{ cursor:grab; color:#9a9a8f; font-size:15px; letter-spacing:-3px; padding:0 4px; user-select:none; }
   .stage-row.paste-target{ background:rgba(226,134,30,0.09); border-radius:8px; box-shadow:inset 0 0 0 1px rgba(226,134,30,0.35); }
   .stage-rollup-total{
     font-family:'Barlow',sans-serif; font-size:11.5px; font-weight:700; color:var(--ink);
@@ -5146,7 +5151,9 @@ function renderStageNode(stage){
   const inheritedLock = !directlyLocked && isStageLockedInherited(stage.id);
   const rollupTotal = stage.category_type === 'billable' ? getStageRollupTotal(stage.id) : 0;
 
+  const canMove = canEditBudgetItems();
   row.innerHTML = `
+    ${canMove ? `<span class="drag-grip" title="Drag to move this stage (drop on the top/bottom edge of another stage to place it before/after, or in the middle to put it inside)">⋮⋮</span>` : ''}
     <span class="toggle">${hasChildren ? (expanded ? '▾' : '▸') : '·'}</span>
     <span class="stage-name">${escapeHtml(stage.name)}</span>
     <span class="badge ${stage.category_type}">${stage.category_type}</span>
@@ -5156,9 +5163,10 @@ function renderStageNode(stage){
     <span class="stage-actions">
       ${canEditBudgetItems() && stage.category_type==='billable' ? `<button class="icon-btn add-item">+ Item</button>` : ''}
       ${canEditBudgetItems() ? `<button class="icon-btn add-sub">+ Stage</button>` : ''}
+      ${canMove ? `<button class="icon-btn mv-up" title="Move up">▲</button><button class="icon-btn mv-down" title="Move down">▼</button><button class="icon-btn mv-out" title="Outdent — move one level up">◀</button><button class="icon-btn mv-in" title="Indent — move inside the stage above">▶</button>` : ''}
       ${canEditBudgetItems() ? `<button class="icon-btn dup">⧉ Duplicate</button>` : ''}
       ${canEditBudgetItems() && stage.category_type==='billable' && state.itemClipboard.length ? `<button class="icon-btn stage-paste-btn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg> Paste (${state.itemClipboard.length})</button>` : ''}
-      ${isOwner() ? `<button class="icon-btn stage-lock-toggle" title="${directlyLocked ? 'Unlock billing for this stage' : 'Lock billing for this stage'}">${directlyLocked ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 7.75-3.9"/></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'}</button>` : ''}
+      ${canEditBudgetItems() ? `<button class="icon-btn stage-lock-toggle" title="${directlyLocked ? 'Unlock billing for this stage' : 'Lock billing for this stage'}">${directlyLocked ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 7.75-3.9"/></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'}</button>` : ''}
       ${canEditBudgetItems() ? `<button class="icon-btn del">✕</button>` : ''}
     </span>
   `;
@@ -5182,6 +5190,29 @@ function renderStageNode(stage){
   const lockBtn = row.querySelector('.stage-lock-toggle'); if(lockBtn) lockBtn.onclick = () => toggleStageLock(stage);
   const pasteBtn = row.querySelector('.stage-paste-btn'); if(pasteBtn) pasteBtn.onclick = () => pasteItemsIntoStage(stage);
   row.addEventListener('click', () => { state.pasteTargetStageId = stage.id; });
+  if(canMove){
+    const sibs = () => childStages(stage.parent_stage_id || null);
+    const q = (c, fn) => { const b = row.querySelector(c); if(b) b.onclick = (e) => { e.stopPropagation(); fn(); }; };
+    q('.mv-up', () => { const l = sibs(), i = l.findIndex(x => x.id === stage.id); if(i > 0) moveStage(stage.id, stage.parent_stage_id || null, i - 1); });
+    q('.mv-down', () => { const l = sibs(), i = l.findIndex(x => x.id === stage.id); if(i < l.length - 1) moveStage(stage.id, stage.parent_stage_id || null, i + 1); });
+    q('.mv-in', () => { const l = sibs(), i = l.findIndex(x => x.id === stage.id); if(i > 0){ state.expanded[l[i-1].id] = true; moveStage(stage.id, l[i-1].id, childStages(l[i-1].id).length); } });
+    q('.mv-out', () => { const par = state.stages.find(x => x.id === stage.parent_stage_id); if(!par) return; const gl = childStages(par.parent_stage_id || null), pi = gl.findIndex(x => x.id === par.id); moveStage(stage.id, par.parent_stage_id || null, pi + 1); });
+    row.draggable = true;
+    const clearDrop = () => row.classList.remove('drop-before', 'drop-after', 'drop-inside');
+    const zoneOf = (e) => { const r = row.getBoundingClientRect(), y = (e.clientY - r.top) / r.height; return y < 0.3 ? 'before' : y > 0.7 ? 'after' : 'inside'; };
+    const badTarget = () => !state.dragStageId || state.dragStageId === stage.id || getDescendantStageIds(state.dragStageId).includes(stage.id);
+    row.addEventListener('dragstart', e => { state.dragStageId = stage.id; e.dataTransfer.effectAllowed = 'move'; try{ e.dataTransfer.setData('text/plain', stage.id); }catch(_){} row.classList.add('dragging'); });
+    row.addEventListener('dragend', () => { state.dragStageId = null; row.classList.remove('dragging'); document.querySelectorAll('.stage-row').forEach(r => r.classList.remove('drop-before', 'drop-after', 'drop-inside', 'dragging')); });
+    row.addEventListener('dragover', e => { if(badTarget()) return; e.preventDefault(); e.dataTransfer.dropEffect = 'move'; const z = zoneOf(e); clearDrop(); row.classList.add('drop-' + z); });
+    row.addEventListener('dragleave', clearDrop);
+    row.addEventListener('drop', e => {
+      if(badTarget()) return; e.preventDefault(); e.stopPropagation();
+      const z = zoneOf(e), dragId = state.dragStageId; clearDrop(); state.dragStageId = null;
+      if(z === 'inside'){ state.expanded[stage.id] = true; moveStage(dragId, stage.id, childStages(stage.id).filter(x => x.id !== dragId).length); return; }
+      const np = stage.parent_stage_id || null, l = childStages(np).filter(x => x.id !== dragId), i = l.findIndex(x => x.id === stage.id);
+      moveStage(dragId, np, z === 'before' ? i : i + 1);
+    });
+  }
 
   wrap.appendChild(row);
 
@@ -5563,10 +5594,37 @@ async function emptyProjectBin(){
   } catch(err){ toast('Could not reach the server — please try again.', true); console.error(err); }
 }
 
+async function moveStage(stageId, newParentId, index){
+  const st = state.stages.find(x => x.id === stageId); if(!st) return;
+  newParentId = newParentId || null;
+  if(newParentId && (newParentId === stageId || getDescendantStageIds(stageId).includes(newParentId))){ toast('A stage cannot be moved inside itself.', true); return; }
+  const oldParent = st.parent_stage_id || null;
+  const list = childStages(newParentId).filter(x => x.id !== stageId);
+  index = Math.max(0, Math.min(index, list.length));
+  list.splice(index, 0, st);
+  const snapshot = state.stages.map(x => ({ ...x }));
+  const updates = [];
+  list.forEach((x, i) => { const seq = i + 1; if(x.id === stageId){ updates.push({ id: x.id, patch: { sequence: seq, parent_stage_id: newParentId } }); } else if((x.sequence || 0) !== seq){ updates.push({ id: x.id, patch: { sequence: seq } }); } });
+  if(oldParent !== newParentId){ childStages(oldParent).filter(x => x.id !== stageId).forEach((x, i) => { if((x.sequence || 0) !== i + 1) updates.push({ id: x.id, patch: { sequence: i + 1 } }); }); }
+  if(!updates.length) return;
+  updates.forEach(u => { const x = state.stages.find(y => y.id === u.id); if(x) Object.assign(x, u.patch); });
+  state.stages = state.stages.map((x, i) => [x, i]).sort((a, b) => ((a[0].sequence || 0) - (b[0].sequence || 0)) || (a[1] - b[1])).map(a => a[0]);
+  renderMain();
+  try{
+    const res = await Promise.all(updates.map(u => withRetry(() => sb.from('ra_wbs_stages').update(u.patch).eq('id', u.id))));
+    const err = res.find(r => r.error);
+    if(err) throw err.error;
+    toast('Stage moved.');
+  } catch(err){
+    state.stages = snapshot; renderMain();
+    toast('Could not save the new order — ' + ((err && err.message) || 'please try again.'), true); console.error(err);
+  }
+}
+
 async function createStage(project_id, parent_stage_id, name, category_type){
   try{
     const { data, error } = await withRetry(() =>
-      sb.from('ra_wbs_stages').insert({ project_id, parent_stage_id, name, category_type }).select().single()
+      sb.from('ra_wbs_stages').insert({ project_id, parent_stage_id, name, category_type, sequence: childStages(parent_stage_id || null).reduce((m, x) => Math.max(m, x.sequence || 0), 0) + 1 }).select().single()
     );
     if(error){ toast(error.message, true); return null; }
     return data;
