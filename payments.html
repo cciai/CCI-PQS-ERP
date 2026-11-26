@@ -1723,5 +1723,51 @@ window.addEventListener('error', e => { const a = document.getElementById('app')
 window.addEventListener('unhandledrejection', e => { const a = document.getElementById('app'); if (a && !a.querySelector('.hdr,.login')) showBootError(cleanErr(e.reason)); });
 boot();
 </script>
+<script>
+/* Indian-numbering (1,00,000) live formatting for every typed number box.
+   The box shows commas, but .value still returns the plain number, so all existing code keeps working. */
+(function(){
+  const nd = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+  const PLAIN_ID = /^(woTds|woSafetyPct|woRetention|npYear|epYear)$/;
+  function fmt(raw){
+    let s = String(raw).replace(/,/g, '');
+    if(s === '' || s === '-' || s === '.' || s === '-.') return s;
+    const neg = s[0] === '-'; if(neg) s = s.slice(1);
+    const parts = s.split('.'); let i = parts[0].replace(/\D/g, ''); const d = parts.length > 1 ? parts.slice(1).join('').replace(/\D/g, '') : null;
+    if(i.length > 3){ const last = i.slice(-3), rest = i.slice(0, -3); i = rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',') + ',' + last; }
+    return (neg ? '-' : '') + i + (d !== null ? '.' + d : '');
+  }
+  function enhance(el){
+    if(el._inr || el.tagName !== 'INPUT' || el.type !== 'number') return;
+    if(PLAIN_ID.test(el.id || '') || el.hasAttribute('data-plain') || el.classList.contains('dlr-cell')) return;
+    const min = el.getAttribute('min'); if(min !== null && Number(min) >= 1000) return;   // years
+    el._inr = true;
+    const allowNeg = min === null || Number(min) < 0;
+    const intOnly = el.getAttribute('inputmode') === 'numeric' || el.getAttribute('step') === '1' || el.getAttribute('step') === '50';
+    const init = nd.get.call(el);
+    el.type = 'text'; el.setAttribute('inputmode', intOnly ? 'numeric' : 'decimal'); el.setAttribute('autocomplete', 'off');
+    Object.defineProperty(el, 'value', { configurable: true,
+      get(){ return nd.get.call(el).replace(/,/g, ''); },
+      set(v){ nd.set.call(el, v === null || v === undefined || v === '' ? '' : fmt(v)); } });
+    nd.set.call(el, init === '' ? '' : fmt(init));
+    el.addEventListener('input', function(){
+      const cur = nd.get.call(el), pos = el.selectionStart == null ? cur.length : el.selectionStart;
+      let sig = 0; for(let k = 0; k < pos; k++) if(/[\d.]/.test(cur[k])) sig++;
+      let c = cur.replace(allowNeg ? /[^\d.\-]/g : /[^\d.]/g, '');
+      if(allowNeg){ c = (c[0] === '-' ? '-' : '') + c.replace(/-/g, ''); }
+      if(intOnly){ c = c.replace(/\./g, ''); } else { const p = c.indexOf('.'); if(p >= 0) c = c.slice(0, p + 1) + c.slice(p + 1).replace(/\./g, ''); }
+      const f = fmt(c);
+      if(f !== cur){
+        nd.set.call(el, f);
+        let n = 0, np = 0; for(; np < f.length && n < sig; np++) if(/[\d.]/.test(f[np])) n++;
+        try{ el.setSelectionRange(np, np); }catch(e){}
+      }
+    }, true);
+  }
+  function scan(root){ (root.querySelectorAll ? root.querySelectorAll('input[type="number"]') : []).forEach(enhance); }
+  new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => { if(n.nodeType === 1){ if(n.tagName === 'INPUT') enhance(n); scan(n); } }))).observe(document.documentElement, { childList: true, subtree: true });
+  scan(document);
+})();
+</script>
 </body>
 </html>

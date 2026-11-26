@@ -296,6 +296,13 @@
   .bitem .rate{ font-family:'Barlow',sans-serif; color:#8B8676; text-align:right; }
   .bitem .amount{ font-family:'Barlow',sans-serif; font-weight:600; text-align:right; }
   .bitem .del{ text-align:right; }
+  /* bill entry: consistent controls */
+  #billRows .bitem input:not([type="checkbox"]):not([type="radio"]), #billRows .bitem select, .wo-rate-note select, .wo-rate-note input[type="date"]{ border:1px solid var(--paper-line); border-radius:6px; padding:5px 8px; font-family:'Barlow',sans-serif; font-size:12.5px; background:#fff; color:var(--ink); }
+  #billRows .bitem input.bill-line-qty{ width:100%; text-align:right; font-weight:600; }
+  #billRows .bitem input:focus, #billRows .bitem select:focus, .wo-rate-note select:focus, .wo-rate-note input[type="date"]:focus{ outline:none; border-color:var(--amber); box-shadow:0 0 0 2px rgba(201,124,74,0.18); }
+  #billRows .bitem a.bill-split{ color:var(--amber); font-weight:600; text-decoration:none; }
+  #billRows .bitem a.bill-split:hover, #billRows .bitem a.bill-hide:hover, #billRows .bitem a.bill-rmrow:hover, #billUnhide:hover{ text-decoration:underline; }
+  #billUnhide{ color:var(--amber); font-weight:600; text-decoration:none; }
   .bitem-head{ display:grid; grid-template-columns: 1fr 50px 85px 90px 95px 86px; gap:8px; padding:0 10px 4px; font-family:'Barlow',sans-serif; font-size:9.5px; text-transform:uppercase; letter-spacing:.06em; color:#B0AB98; }
   .bitem-head .qty, .bitem-head .rate, .bitem-head .amount{ text-align:right; }
 
@@ -3222,7 +3229,7 @@ function renderBillEntry(project){
         <span class="unit">${escapeHtml(item.unit||'')}</span>
         <span class="rate">${l.activity==='lumpsum' ? '—' : '₹'+fmtNum(rate)}</span>
         <span class="qty">${k === 0 ? fmtNum(prevQty) : ''}</span>
-        <span>${canEditRow ? `<input type="number" inputmode="decimal" step="0.001" class="bill-line-qty" data-row="${rid}" data-line="${l.id}" data-rate="${rate}" data-ref="${defaultBI(l) || ''}" value="${thisQty||''}" placeholder="0">` : `<span class="qty">${fmtNum(thisQty)}</span>`}</span>
+        <span style="text-align:right;">${canEditRow ? `<input type="number" inputmode="decimal" step="0.001" class="bill-line-qty" data-row="${rid}" data-line="${l.id}" data-rate="${rate}" data-ref="${defaultBI(l) || ''}" value="${thisQty||''}" placeholder="0">` : `<span class="qty">${fmtNum(thisQty)}</span>`}</span>
         <span class="qty" ${k === 0 ? `id="billCum-${l.id}" data-prev="${prevQty}"` : ''}>${k === 0 ? fmtNum(cumQty) : ''}</span>
         <span class="amount" id="billAmt-${rid}">₹${fmtNum(thisQty * rate)}</span>
       </div>`;
@@ -3292,7 +3299,7 @@ function renderBillEntry(project){
 
       ${isEditable && isDraft ? `
         <div class="modal-actions" style="margin-top:20px;">
-          <button class="btn" id="saveDraftBtn">Save Draft</button>
+          <button class="btn" id="saveDraftBtn" style="white-space:nowrap;padding-left:18px;padding-right:18px;">Save Draft</button>
           <button class="btn primary" id="submitBillBtn">Submit Bill</button>
         </div>
       ` : ''}
@@ -6115,6 +6122,52 @@ function toast(msg, isErr){
   clearTimeout(toastTimer);
   toastTimer = setTimeout(()=> el.classList.remove('show'), 3200);
 }
+</script>
+<script>
+/* Indian-numbering (1,00,000) live formatting for every typed number box.
+   The box shows commas, but .value still returns the plain number, so all existing code keeps working. */
+(function(){
+  const nd = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+  const PLAIN_ID = /^(woTds|woSafetyPct|woRetention|npYear|epYear)$/;
+  function fmt(raw){
+    let s = String(raw).replace(/,/g, '');
+    if(s === '' || s === '-' || s === '.' || s === '-.') return s;
+    const neg = s[0] === '-'; if(neg) s = s.slice(1);
+    const parts = s.split('.'); let i = parts[0].replace(/\D/g, ''); const d = parts.length > 1 ? parts.slice(1).join('').replace(/\D/g, '') : null;
+    if(i.length > 3){ const last = i.slice(-3), rest = i.slice(0, -3); i = rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',') + ',' + last; }
+    return (neg ? '-' : '') + i + (d !== null ? '.' + d : '');
+  }
+  function enhance(el){
+    if(el._inr || el.tagName !== 'INPUT' || el.type !== 'number') return;
+    if(PLAIN_ID.test(el.id || '') || el.hasAttribute('data-plain') || el.classList.contains('dlr-cell')) return;
+    const min = el.getAttribute('min'); if(min !== null && Number(min) >= 1000) return;   // years
+    el._inr = true;
+    const allowNeg = min === null || Number(min) < 0;
+    const intOnly = el.getAttribute('inputmode') === 'numeric' || el.getAttribute('step') === '1' || el.getAttribute('step') === '50';
+    const init = nd.get.call(el);
+    el.type = 'text'; el.setAttribute('inputmode', intOnly ? 'numeric' : 'decimal'); el.setAttribute('autocomplete', 'off');
+    Object.defineProperty(el, 'value', { configurable: true,
+      get(){ return nd.get.call(el).replace(/,/g, ''); },
+      set(v){ nd.set.call(el, v === null || v === undefined || v === '' ? '' : fmt(v)); } });
+    nd.set.call(el, init === '' ? '' : fmt(init));
+    el.addEventListener('input', function(){
+      const cur = nd.get.call(el), pos = el.selectionStart == null ? cur.length : el.selectionStart;
+      let sig = 0; for(let k = 0; k < pos; k++) if(/[\d.]/.test(cur[k])) sig++;
+      let c = cur.replace(allowNeg ? /[^\d.\-]/g : /[^\d.]/g, '');
+      if(allowNeg){ c = (c[0] === '-' ? '-' : '') + c.replace(/-/g, ''); }
+      if(intOnly){ c = c.replace(/\./g, ''); } else { const p = c.indexOf('.'); if(p >= 0) c = c.slice(0, p + 1) + c.slice(p + 1).replace(/\./g, ''); }
+      const f = fmt(c);
+      if(f !== cur){
+        nd.set.call(el, f);
+        let n = 0, np = 0; for(; np < f.length && n < sig; np++) if(/[\d.]/.test(f[np])) n++;
+        try{ el.setSelectionRange(np, np); }catch(e){}
+      }
+    }, true);
+  }
+  function scan(root){ (root.querySelectorAll ? root.querySelectorAll('input[type="number"]') : []).forEach(enhance); }
+  new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => { if(n.nodeType === 1){ if(n.tagName === 'INPUT') enhance(n); scan(n); } }))).observe(document.documentElement, { childList: true, subtree: true });
+  scan(document);
+})();
 </script>
 </body>
 </html>
