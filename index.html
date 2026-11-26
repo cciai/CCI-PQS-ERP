@@ -3217,7 +3217,7 @@ function renderBillEntry(project){
         <button class="btn tiny" id="printBillBtn" style="font-weight:600;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> Print / Download PDF</button>
         ${canDelete ? `<button class="icon-btn" id="deleteBillBtn" title="Delete bill" style="font-size:14px;">✕</button>` : ''}
       </h3>
-      <div class="wo-rate-note">${wo.ra_subcontractors ? escapeHtml(wo.ra_subcontractors.name) : ''} · Period ${bill.period_from} to ${bill.period_to}${isFinalized ? '' : (woLocked ? ' · Work Order locked — view only' : !isEditable && bill.status!=='draft' ? ' · Locked — approved bills can no longer be edited' : '')}</div>
+      <div class="wo-rate-note">${wo.ra_subcontractors ? escapeHtml(wo.ra_subcontractors.name) : ''} · Period ${isEditable ? `<input type="date" id="billPeriodFrom" value="${bill.period_from||''}" style="font-size:12px;padding:2px 4px;"> to <input type="date" id="billPeriodTo" value="${bill.period_to||''}" style="font-size:12px;padding:2px 4px;">` : `${bill.period_from} to ${bill.period_to}`}${isFinalized ? '' : (woLocked ? ' · Work Order locked — view only' : !isEditable && bill.status!=='draft' ? ' · Locked — approved bills can no longer be edited' : '')}</div>
 
       ${woLocked && !isFinalized ? `<div class="locked-note">🔒 This Work Order is locked${wo.lock_reason?' — '+escapeHtml(wo.lock_reason):''}. This bill cannot be edited or submitted until the Owner unlocks the Work Order.</div>` : ''}
       ${isFinalized ? `<div class="locked-note"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Finalized by Accounts on ${new Date(bill.finalized_at).toLocaleDateString('en-IN')} — this bill is now permanently locked. No edits or deletion, by anyone, including Owner.</div>` : ''}
@@ -3295,6 +3295,17 @@ function renderBillEntry(project){
   };
   const deleteBtn = document.getElementById('deleteBillBtn');
   if(deleteBtn) deleteBtn.onclick = () => deleteBill(bill);
+  ['billPeriodFrom','billPeriodTo'].forEach(id => { const el = document.getElementById(id); if(!el) return; el.onchange = async () => {
+    const f = document.getElementById('billPeriodFrom').value, t = document.getElementById('billPeriodTo').value;
+    if(!f || !t){ toast('Choose both period dates.', true); return; }
+    if(f > t){ toast('Period "from" date cannot be after the "to" date.', true); document.getElementById('billPeriodFrom').value = bill.period_from; document.getElementById('billPeriodTo').value = bill.period_to; return; }
+    const { error } = await withRetry(() => sb.from('ra_bills').update({ period_from: f, period_to: t }).eq('id', bill.id));
+    if(error){ toast(error.message, true); return; }
+    bill.period_from = f; bill.period_to = t;
+    const wb = state.woBills.find(b => b.id === bill.id); if(wb){ wb.period_from = f; wb.period_to = t; }
+    state.billsCacheProjectId = null;
+    toast('Bill period updated.');
+  }; });
   document.getElementById('printBillBtn').onclick = () => printBill(bill, wo, lines, subTotal, retentionAmt, tdsAmt, safetyAmt, debitAmt, gstAmt, effectiveGstPct, netPayable, prevSubTotal, cumulativeSubTotal, project);
 
   const recompute = () => {
