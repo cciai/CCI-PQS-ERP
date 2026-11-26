@@ -123,8 +123,9 @@ function newView(){
         <label>Floor</label><select id="floor"><option value="">Select floor</option>${S.floors.map(f => `<option value="${f.id}" ${f.id===S.pick.floor?'selected':''}>${esc(f.name)}${f.group?' · '+esc(f.group):''}</option>`).join('')}</select>`;
       if(fl) h += `<label>Work</label><select id="item"><option value="">Select work</option>${fl.items.map(i => `<option value="${i.id}" ${i.id===S.pick.item?'selected':''}>${esc(i.description)}</option>`).join('')}</select>`;
       if(it){
-        h += `<label>Completed flats (tap to select)</label><div class="chips">${it.flats.map(f => `<button class="chip ${S.pick.flats.includes(f.id)?'on':''}" data-f="${f.id}">${esc(f.flat_no)}</button>`).join('')}</div>
-          <button class="btn alt" style="margin-top:8px;padding:9px" id="allf">Select all flats</button>
+        const whole = it.flats.length === 1 && it.flats[0].flat_no === 'Whole floor';
+        h += `<label>${whole ? 'Floor-wise work (tap to confirm)' : 'Completed flats (tap to select)'}</label><div class="chips">${it.flats.map(f => `<button class="chip ${S.pick.flats.includes(f.id)?'on':''}" data-f="${f.id}">${esc(f.flat_no)}</button>`).join('')}</div>
+          ${whole ? '' : `<button class="btn alt" style="margin-top:8px;padding:9px" id="allf">Select all flats</button>`}
           <label>Work item as per work order</label><select id="wl">${wo.lines.map(l => `<option value="${l.id}" ${l.id===S.pick.wl?'selected':''}>${esc(l.description)} (${esc(l.unit||'')})</option>`).join('')}</select>
           <label>Quantity done${wo.lines.find(l=>l.id===S.pick.wl)?' ('+esc(wo.lines.find(l=>l.id===S.pick.wl).unit||'')+')':''}</label>
           <input id="qty" type="number" inputmode="decimal" step="any" value="${esc(S.pick.qty)}" placeholder="Total for the selected flats">
@@ -133,7 +134,7 @@ function newView(){
       h += `</div>`;
     }
     if(S.lines.length){
-      h += `<div class="card"><h2 style="font-size:20px">This bill</h2>${S.lines.map((l,i) => `<div class="line"><div><b>${esc(l.itemName)}</b> – ${esc(l.floorName)}<div class="note">Flats ${esc(l.flatNos)} · ${esc(l.qty)} ${esc(l.unit||'')}</div></div><button class="x" data-rm="${i}">Remove</button></div>`).join('')}
+      h += `<div class="card"><h2 style="font-size:20px">This bill</h2>${S.lines.map((l,i) => `<div class="line"><div><b>${esc(l.itemName)}</b> – ${esc(l.floorName)}<div class="note">${l.flatNos === 'Whole floor' ? 'Whole floor' : 'Flats ' + esc(l.flatNos)} · ${esc(l.qty)} ${esc(l.unit||'')}</div></div><button class="x" data-rm="${i}">Remove</button></div>`).join('')}
         <label>Remarks (optional)</label><textarea id="rem"></textarea>
         <button class="btn" id="submit" ${S.busy?'disabled':''}>Submit bill to office</button></div>`;
     }
@@ -150,7 +151,7 @@ function newView(){
   on('wl','change', e => { S.pick.wl = e.target.value; S.pick.qty = $('qty').value; render(); });
   on('addl','click', () => {
     const q = parseFloat($('qty').value), wlid = $('wl').value; const w = curWo(), i = curItem(), f = curFloor();
-    if(!S.pick.flats.length){ S.msg = null; return flash('Select at least one flat.'); }
+    if(!S.pick.flats.length){ S.msg = null; return flash(curItem().flats.length === 1 && curItem().flats[0].flat_no === 'Whole floor' ? 'Tap "Whole floor" to confirm the work is complete.' : 'Select at least one flat.'); }
     if(!(q > 0)) return flash('Enter the quantity done.');
     const wl = w.lines.find(l => l.id === wlid);
     S.lines.push({ wo_line_item_id:wlid, floor_stage_id:f.id, budget_item_id:i.id, flat_ids:S.pick.flats.slice(), qty:q, unit:wl.unit, itemName:i.description, floorName:f.name, flatNos:i.flats.filter(x => S.pick.flats.includes(x.id)).map(x => x.flat_no).join(', ') });
@@ -175,7 +176,7 @@ async function myView(){
   if(!S.my){ const r = await sb.rpc('site_my_claims'); S.my = r.error ? [] : (r.data || []); }
   $('body').innerHTML = S.my.length ? S.my.map(c => `<div class="card"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>${esc(c.sub)}</b><span class="badge b-${c.status}">${STATUS[c.status]||c.status}</span></div>
     <div class="note">${esc(c.project)} · ${esc(c.wo)} · ${new Date(c.at).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</div>
-    ${(c.lines||[]).map(l => `<div class="line"><div>${esc(l.item)} – ${esc(l.floor)}<div class="note">Flats ${esc(l.flats||'')} · ${esc(l.qty)} ${esc(l.unit||'')}</div></div></div>`).join('')}
+    ${(c.lines||[]).map(l => `<div class="line"><div>${esc(l.item)} – ${esc(l.floor)}<div class="note">${l.flats === 'Whole floor' ? 'Whole floor' : 'Flats ' + esc(l.flats||'')} · ${esc(l.qty)} ${esc(l.unit||'')}</div></div></div>`).join('')}
     ${c.status==='rejected' && c.note ? `<div class="err">${esc(c.note)}</div>` : ''}</div>`).join('') : `<div class="card note">No bills submitted yet.</div>`;
 }
 boot();

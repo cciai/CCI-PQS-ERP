@@ -1751,7 +1751,10 @@ function renderProjectSubNav(){
   `;
   el.querySelectorAll('.proj-subnav-btn').forEach(btn => {
     btn.onclick = async () => {
+      if(state.creatingWO && !confirm('Leave the Work Order form? Anything not saved will be lost.')) return;
       state.activeTab = btn.dataset.sec;
+      state.creatingWO = false; state.editingWOId = null; state.editingWOOriginalLineIds = null; state.addingWOLine = false;
+      state.woDetail = null;
       state.viewingWOId = null;
       state.currentBillId = null;
       state.woListPage = 1;
@@ -1800,24 +1803,33 @@ async function renderFlatsTab(project){
   const flats = fR.data || [];
   const claimed = new Set(); (cR.data || []).forEach(l => (l.flat_ids || []).forEach(fid => claimed.add(l.budget_item_id + ':' + fid)));
   const floor = state.stages.find(s => s.id === state.flatFloor), items = itemsForStage(floor.id);
+  const wholeFloorMode = lsCat(floor) === 'structure';
+  if(wholeFloorMode && canCreateWO()){
+    // Structure is certified floor by floor: make sure every structure floor has its single "Whole floor" unit.
+    const missing = floors.filter(f => lsCat(f) === 'structure' && !flats.some(x => x.floor_stage_id === f.id));
+    if(missing.length){
+      const { error: e0 } = await sb.from('ra_flats').upsert(missing.map(f => ({ project_id: project.id, floor_stage_id: f.id, flat_no: 'Whole floor' })), { onConflict:'floor_stage_id,flat_no', ignoreDuplicates:true });
+      if(!e0) return renderFlatsTab(project);
+    }
+  }
   const fl = flats.filter(f => f.floor_stage_id === floor.id).sort((a, b) => a.flat_no.localeCompare(b.flat_no, undefined, { numeric:true }));
   const canEdit = canCreateWO(), owner = isOwner();
   const certified = f => new Set((f.ra_flat_work_status || []).map(s => s.budget_item_id));
   const counts = {}; flats.forEach(f => { counts[f.floor_stage_id] = (counts[f.floor_stage_id] || 0) + 1; });
-  const opts = floors.map(f => `<option value="${f.id}" ${f.id === floor.id ? 'selected' : ''}>${escapeHtml(getStagePath(f.id))}${counts[f.id] ? ` (${counts[f.id]} flats)` : ' — no flats yet'}</option>`).join('');
+  const opts = floors.map(f => `<option value="${f.id}" ${f.id === floor.id ? 'selected' : ''}>${escapeHtml(getStagePath(f.id))}${lsCat(f) === 'structure' ? ' — floor-wise' : (counts[f.id] ? ` (${counts[f.id]} flat${counts[f.id] > 1 ? 's' : ''})` : ' — no flats yet')}</option>`).join('');
   tc.innerHTML = `
-    <div class="wo-rate-note" style="margin-bottom:12px;">Site engineers can bill a flat only after <b>${owner ? 'you' : 'the owner'}</b> certify it complete here, per work item. Once billed, a certified flat is locked.</div>
+    <div class="wo-rate-note" style="margin-bottom:12px;">Site engineers can bill only after <b>${owner ? 'you' : 'the owner'}</b> certify the work complete here — <b>flat by flat for Finishes</b>, <b>floor by floor for Structure</b>. Once billed, a certified flat / floor is locked.</div>
     <div class="field"><label>Floor</label><select id="flFloor">${opts}</select></div>
-    ${canEdit ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 14px;align-items:center;">
+    ${canEdit && !wholeFloorMode ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 14px;align-items:center;">
       <input id="flAddTxt" placeholder="Add flats: 101, 102, 103 or 101-108" style="flex:1;min-width:220px;">
       <button class="btn tiny primary" id="flAddBtn">+ Add flats</button>
       <button class="btn tiny" id="flCopyBtn" title="Copy this floor's flat numbers to every other floor that has none">Copy flat list to all other floors</button></div>` : ''}
     ${fl.length ? `<div style="overflow-x:auto;"><table class="wo-doc-table" style="min-width:420px;font-size:13px;">
-      <thead><tr><th>Flat</th>${items.map(i => `<th style="text-align:center;">${escapeHtml(i.description)}${owner ? `<br><a href="#" class="flAll" data-i="${i.id}" style="font-weight:500;font-size:11px;">certify all</a>` : ''}</th>`).join('')}<th></th></tr></thead>
-      <tbody>${fl.map(f => { const c = certified(f); return `<tr><td><b>${escapeHtml(f.flat_no)}</b></td>${items.map(i => {
+      <thead><tr><th>${wholeFloorMode ? 'Floor' : 'Flat'}</th>${items.map(i => `<th style="text-align:center;">${escapeHtml(i.description)}${owner ? `<br><a href="#" class="flAll" data-i="${i.id}" style="font-weight:500;font-size:11px;">certify all</a>` : ''}</th>`).join('')}<th></th></tr></thead>
+      <tbody>${fl.map(f => { const c = certified(f); return `<tr><td><b>${escapeHtml(f.flat_no === 'Whole floor' ? (wholeFloorMode ? floor.name : 'Whole floor (floor-wise)') : f.flat_no)}</b></td>${items.map(i => {
         const done = c.has(i.id), cl = claimed.has(i.id + ':' + f.id);
         return `<td style="text-align:center;">${cl ? '<span title="Already claimed by site — locked">💰 ✓</span>' : `<input type="checkbox" class="flChk" data-f="${f.id}" data-i="${i.id}" ${done ? 'checked' : ''} ${owner ? '' : 'disabled'}>`}</td>`; }).join('')}
-        <td>${canEdit && !c.size ? `<button class="icon-btn flDel" data-f="${f.id}" title="Remove flat">✕</button>` : ''}</td></tr>`; }).join('')}</tbody></table></div>`
+        <td>${canEdit && !c.size && !wholeFloorMode ? `<button class="icon-btn flDel" data-f="${f.id}" title="Remove flat">✕</button>` : ''}</td></tr>`; }).join('')}</tbody></table></div>`
       : `<div class="wo-lines-empty">No flats added for this floor yet.</div>`}`;
   document.getElementById('flFloor').onchange = e => { state.flatFloor = e.target.value; renderFlatsTab(project); };
   const uid = async () => (await sb.auth.getUser()).data.user.id;
@@ -1832,7 +1844,7 @@ async function renderFlatsTab(project){
   const copyBtn = document.getElementById('flCopyBtn');
   if(copyBtn) copyBtn.onclick = async () => {
     if(!fl.length){ toast('Add flats to this floor first.', true); return; }
-    const targets = floors.filter(f => f.id !== floor.id && !counts[f.id]);
+    const targets = floors.filter(f => f.id !== floor.id && !counts[f.id] && lsCat(f) === lsCat(floor));
     if(!targets.length){ toast('Every other floor already has flats.', true); return; }
     if(!confirm(`Copy ${fl.length} flat number(s) to ${targets.length} other floor(s)?`)) return;
     const rows = []; targets.forEach(t => fl.forEach(f => rows.push({ project_id: project.id, floor_stage_id: t.id, flat_no: f.flat_no })));
@@ -1924,8 +1936,8 @@ async function sbCreateBillFromClaim(claim, project){
     if(project.lumpsum_billing){
       for(const l of lines){ const st = state.stages.find(s => s.id === l.floor_stage_id); await lsAddItemLine(project, wo, lsCat(st), l.floor_stage_id, l.budget_item_id); }
     } else {
-      const agg = {}; lines.forEach(l => agg[l.wo_line_item_id] = (agg[l.wo_line_item_id] || 0) + Number(l.qty));
-      const rows = Object.entries(agg).map(([id, q]) => ({ bill_id: bill.id, wo_line_item_id: id, this_qty: q }));
+      const agg = {}; lines.forEach(l => { const k = l.wo_line_item_id + '|' + l.budget_item_id; agg[k] = (agg[k] || 0) + Number(l.qty); });
+      const rows = Object.entries(agg).map(([k, q]) => { const [id, bi] = k.split('|'); return { bill_id: bill.id, wo_line_item_id: id, budget_item_id: bi, this_qty: q }; });
       const { error } = await sb.from('ra_bill_line_entries').insert(rows); if(error){ toast(error.message, true); return; }
     }
     await sb.from('ra_site_claims').update({ status:'billed', bill_id: bill.id, reviewed_by:(await sb.auth.getUser()).data.user.id, reviewed_at:new Date().toISOString() }).eq('id', claim.id);
@@ -3014,6 +3026,33 @@ function lsAddBarHtml(info){
     </div></div>`;
 }
 
+
+/* ---- Bills must be against budget WBS: helpers ---- */
+function bwCollect(lines, skipRow){
+  // Current on-screen rows -> in-memory entries (so the screen can re-render without losing typed values).
+  const out = []; const seen = new Set();
+  document.querySelectorAll('.bill-line-qty').forEach(inp => {
+    if(skipRow && inp.dataset.row === skipRow) return;
+    seen.add(inp.dataset.line);
+    const it = document.querySelector(`.bill-wbs-item[data-row="${inp.dataset.row}"]`);
+    out.push({ wo_line_item_id: inp.dataset.line, budget_item_id: (it ? it.value : inp.dataset.ref) || null, this_qty: parseFloat(inp.value) || 0 });
+  });
+  (state.billLines || []).forEach(e => { if(!seen.has(e.wo_line_item_id) && Number(e.this_qty) > 0) out.push({ wo_line_item_id: e.wo_line_item_id, budget_item_id: e.budget_item_id || null, this_qty: Number(e.this_qty) }); });
+  return out;
+}
+async function bwLoadOthers(project, excludeBillId){
+  let q = sb.from('ra_bill_line_entries')
+    .select('budget_item_id, this_qty, ra_bills!inner(status, deleted_at), ra_wo_line_items!inner(agreed_rate, ra_work_orders!inner(project_id))')
+    .eq('ra_wo_line_items.ra_work_orders.project_id', project.id).in('ra_bills.status', ['submitted','approved','paid']).is('ra_bills.deleted_at', null).not('budget_item_id', 'is', null).range(0, 4999);
+  if(excludeBillId) q = q.neq('bill_id', excludeBillId);
+  const { data, error } = await withRetry(() => q);
+  const out = { byFloor: {}, byItem: {} };
+  if(error){ console.error(error); return out; }
+  (data || []).forEach(e => { const bi = state.budgetItems.find(b => b.id === e.budget_item_id); if(!bi) return; const amt = Number(e.this_qty || 0) * Number(e.ra_wo_line_items.agreed_rate || 0);
+    out.byFloor[bi.stage_id] = (out.byFloor[bi.stage_id] || 0) + amt; out.byItem[bi.id] = (out.byItem[bi.id] || 0) + amt; });
+  return out;
+}
+
 function renderBillEntry(project){
   const tabContent = document.getElementById('tabContent');
   const wo = state.woDetail;
@@ -3028,31 +3067,49 @@ function renderBillEntry(project){
   const isEditable = !isFinalized && (bill.status === 'draft' || bill.status === 'submitted') && canCreateWO();
   const canDelete = !isFinalized && (isOwner() || ((bill.status === 'draft' || bill.status === 'submitted') && canCreateWO()));
 
-  const lineMap = {};
-  state.billLines.forEach(e => { lineMap[e.wo_line_item_id] = e.this_qty; });
+  const defaultBI = (l) => l.ref_budget_item_id || l.budget_item_id || null;
+  const entsOf = (l) => { const e = (state.billLines || []).filter(x => x.wo_line_item_id === l.id); return e.length ? e : [{ wo_line_item_id: l.id, budget_item_id: defaultBI(l), this_qty: 0 }]; };
+  const wbsFloors = LS ? [] : sbLeafFloors();
+  const biById = (id) => (state.budgetItems || []).find(b => b.id === id);
+  const wbsPickerHtml = (rid, biId, editable) => {
+    const bi = biById(biId), fl = bi ? bi.stage_id : '';
+    if(!editable) return `<div class="wo-line-path">WBS: ${bi ? escapeHtml(getStagePath(bi.stage_id)) + ' › ' + escapeHtml(bi.description) : '<span style="color:var(--red);">not set</span>'}</div>`;
+    return `<div class="bill-wbs" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:5px;">
+      <select class="bill-wbs-floor" data-row="${rid}" style="max-width:230px;font-size:12.5px;"><option value="">Floor / WBS…</option>${wbsFloors.map(f => `<option value="${f.id}" ${f.id === fl ? 'selected' : ''}>${escapeHtml(getStagePath(f.id))}</option>`).join('')}</select>
+      <select class="bill-wbs-item" data-row="${rid}" style="max-width:200px;font-size:12.5px;"><option value="">Budget item…</option>${fl ? itemsForStage(fl).map(i => `<option value="${i.id}" ${i.id === biId ? 'selected' : ''}>${escapeHtml(i.description)}</option>`).join('') : ''}</select></div>
+      <div class="wbs-info" id="wbsInfo-${rid}" style="font-size:11.5px;margin-top:3px;"></div>`;
+  };
 
   let subTotal = 0, prevSubTotal = 0;
   const rowsHtml = lines.map(l => {
     const item = woLineItem(l);
     const rate = Number(l.agreed_rate || 0);
     const prevQty = state.billPrevCumulative[l.id] || 0;
-    const thisQty = lineMap[l.id] || 0;
-    const cumQty = prevQty + Number(thisQty);
-    const thisAmt = thisQty * rate;
+    const ents = entsOf(l);
+    const thisQtyAll = ents.reduce((t, e) => t + Number(e.this_qty || 0), 0);
+    const cumQty = prevQty + thisQtyAll;
     prevSubTotal += prevQty * rate;
-    subTotal += thisAmt;
+    subTotal += thisQtyAll * rate;
     const lineLocked = !!item.billing_locked || isStageLockedInherited(item.stage_id);
     const lockTitle = item.billing_locked ? (item.lock_reason || 'Billing locked by Owner') : 'A stage above this item is locked';
-    return `
-      <div class="bitem" style="grid-template-columns:1fr 60px 80px 90px 90px 90px 110px;">
-        <span class="desc">${escapeHtml(item.description||'')}${lineLocked ? ` <span class="lock-badge lock-badge-own" title="${escapeHtml(lockTitle)}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Locked</span>` : ''}<div class="wo-line-path">${escapeHtml(getStagePath(item.stage_id))}</div></span>
+    const lockBadge = lineLocked ? ` <span class="lock-badge lock-badge-own" title="${escapeHtml(lockTitle)}">🔒 Locked</span>` : '';
+    return ents.map((e, k) => {
+      const rid = l.id + '_' + k, thisQty = Number(e.this_qty || 0), last = k === ents.length - 1;
+      const canEditRow = isEditable && !lineLocked;
+      return `
+      <div class="bitem" data-row="${rid}" style="grid-template-columns:1fr 60px 80px 90px 90px 90px 110px;">
+        <span class="desc">${k === 0 ? escapeHtml(item.description||'') + lockBadge : '<span style="color:#8B8676;">↳ same item, another floor</span>'}
+          ${LS ? `<div class="wo-line-path">${escapeHtml(getStagePath(item.stage_id))}</div>` : wbsPickerHtml(rid, e.budget_item_id, canEditRow)}
+          ${canEditRow && !LS && last ? `<a href="#" class="bill-split" data-line="${l.id}" style="font-size:12px;">+ bill part of this against another floor</a>` : ''}
+          ${canEditRow && !LS && k > 0 ? `<a href="#" class="bill-rmrow" data-row="${rid}" style="font-size:12px;color:var(--red);margin-left:10px;">remove row</a>` : ''}</span>
         <span class="unit">${escapeHtml(item.unit||'')}</span>
         <span class="rate">${l.activity==='lumpsum' ? '—' : '₹'+fmtNum(rate)}</span>
-        <span class="qty">${fmtNum(prevQty)}</span>
-        <span>${isEditable && !lineLocked ? `<input type="number" inputmode="decimal" step="0.001" class="bill-line-qty" data-line="${l.id}" data-rate="${rate}" value="${thisQty||''}" placeholder="0">` : `<span class="qty">${fmtNum(thisQty)}</span>`}</span>
-        <span class="qty">${fmtNum(cumQty)}</span>
-        <span class="amount" id="billAmt-${l.id}">₹${fmtNum(thisAmt)}</span>
+        <span class="qty">${k === 0 ? fmtNum(prevQty) : ''}</span>
+        <span>${canEditRow ? `<input type="number" inputmode="decimal" step="0.001" class="bill-line-qty" data-row="${rid}" data-line="${l.id}" data-rate="${rate}" data-ref="${defaultBI(l) || ''}" value="${thisQty||''}" placeholder="0">` : `<span class="qty">${fmtNum(thisQty)}</span>`}</span>
+        <span class="qty" ${k === 0 ? `id="billCum-${l.id}" data-prev="${prevQty}"` : ''}>${k === 0 ? fmtNum(cumQty) : ''}</span>
+        <span class="amount" id="billAmt-${rid}">₹${fmtNum(thisQty * rate)}</span>
       </div>`;
+    }).join('');
   }).join('');
 
   const retentionAmt = subTotal * (wo.retention_pct||0)/100;
@@ -3162,8 +3219,10 @@ function renderBillEntry(project){
       const rate = parseFloat(inp.dataset.rate) || 0;
       const amt = qty * rate;
       st += amt;
-      document.getElementById(`billAmt-${inp.dataset.line}`).textContent = '₹'+fmtNum(amt);
+      const ae = document.getElementById(`billAmt-${inp.dataset.row}`); if(ae) ae.textContent = '₹'+fmtNum(amt);
     });
+    document.querySelectorAll('[id^="billCum-"]').forEach(c => { const lid = c.id.slice(8); let t = 0; document.querySelectorAll(`.bill-line-qty[data-line="${lid}"]`).forEach(i => t += parseFloat(i.value) || 0); if(document.querySelector(`.bill-line-qty[data-line="${lid}"]`)) c.textContent = fmtNum((parseFloat(c.dataset.prev) || 0) + t); });
+    if(!LS) bwUpdateInfo();
     const ret = st * (wo.retention_pct||0)/100;
     const tds = st * (wo.tds_pct||0)/100;
     const saf = wo.safety_pct ? st * wo.safety_pct/100 : (wo.safety_amount||0);
@@ -3208,6 +3267,36 @@ function renderBillEntry(project){
         const ni = document.querySelector(`.bill-line-qty[data-line="${line.id}"]`); if(ni){ ni.dispatchEvent(new Event('input', { bubbles: true })); ni.focus(); }
       };
     }
+  }
+  // ---- WBS pickers: every billed line must sit against a budget WBS item ----
+  let bwOthers = null;
+  const bwRowBI = (rid) => { const it = document.querySelector(`.bill-wbs-item[data-row="${rid}"]`); return it ? it.value : (document.querySelector(`.bill-line-qty[data-row="${rid}"]`) || {dataset:{}}).dataset.ref; };
+  function bwUpdateInfo(){
+    if(LS || !bwOthers) return;
+    const floorMine = {}, itemMine = {};
+    document.querySelectorAll('.bill-line-qty').forEach(inp => { const bi = biById(bwRowBI(inp.dataset.row)); if(!bi) return; const amt = (parseFloat(inp.value) || 0) * (parseFloat(inp.dataset.rate) || 0);
+      floorMine[bi.stage_id] = (floorMine[bi.stage_id] || 0) + amt; itemMine[bi.id] = (itemMine[bi.id] || 0) + amt; });
+    document.querySelectorAll('.wbs-info').forEach(el => {
+      const rid = el.id.slice(8), bi = biById(bwRowBI(rid)); if(!bi){ el.textContent = ''; return; }
+      const fb = itemsForStage(bi.stage_id).reduce((t, i) => t + Number(i.budgeted_qty || 0) * Number(i.budgeted_rate || 0), 0), ib = Number(bi.budgeted_qty || 0) * Number(bi.budgeted_rate || 0);
+      const fUsed = (bwOthers.byFloor[bi.stage_id] || 0) + (floorMine[bi.stage_id] || 0), iUsed = (bwOthers.byItem[bi.id] || 0) + (itemMine[bi.id] || 0);
+      const fOver = fUsed > fb + 0.5, iOver = iUsed > ib + 0.5;
+      el.innerHTML = `<span style="color:${fOver ? 'var(--red)' : '#6B6757'};font-weight:${fOver ? 700 : 400};">Floor budget ${lsInr(fb)} · billed ${lsInr(fUsed)} · ${fOver ? 'OVER by ' + lsInr(fUsed - fb) : 'left ' + lsInr(fb - fUsed)}</span><br><span style="color:${iOver ? '#B7791F' : '#6B6757'};">This item: budget ${lsInr(ib)} · billed ${lsInr(iUsed)}${iOver ? ' (above item budget)' : ''}</span>`;
+    });
+    state.bwOver = Object.keys(floorMine).some(st => { const fb = itemsForStage(st).reduce((t, i) => t + Number(i.budgeted_qty || 0) * Number(i.budgeted_rate || 0), 0); return (bwOthers.byFloor[st] || 0) + floorMine[st] > fb + 0.5; });
+  }
+  if(!LS && isEditable){
+    bwLoadOthers(project, bill.id).then(o => { bwOthers = o; bwUpdateInfo(); });
+    document.querySelectorAll('.bill-wbs-floor').forEach(sel => sel.addEventListener('change', () => {
+      const it = document.querySelector(`.bill-wbs-item[data-row="${sel.dataset.row}"]`);
+      it.innerHTML = `<option value="">Budget item…</option>` + (sel.value ? itemsForStage(sel.value).map(i => `<option value="${i.id}">${escapeHtml(i.description)}</option>`).join('') : '');
+      if(sel.value && itemsForStage(sel.value).length === 1) it.value = itemsForStage(sel.value)[0].id;
+      bwUpdateInfo();
+    }));
+    document.querySelectorAll('.bill-wbs-item').forEach(sel => sel.addEventListener('change', bwUpdateInfo));
+    const reRender = (mut) => { state.billLines = bwCollect(lines); mut(state.billLines); renderBillEntry(project); };
+    document.querySelectorAll('.bill-split').forEach(a => a.onclick = ev => { ev.preventDefault(); reRender(arr => arr.push({ wo_line_item_id: a.dataset.line, budget_item_id: null, this_qty: 0 })); });
+    document.querySelectorAll('.bill-rmrow').forEach(a => a.onclick = ev => { ev.preventDefault(); const rid = a.dataset.row; const cur = bwCollect(lines, rid); state.billLines = cur; renderBillEntry(project); });
   }
   const debitInput = document.getElementById('billDebitAmount');
   if(debitInput) debitInput.addEventListener('input', recompute);
@@ -3259,8 +3348,12 @@ async function rejectBill(billId){
 
 function printBill(bill, wo, lines, subTotal, retentionAmt, tdsAmt, safetyAmt, debitAmt, gstAmt, gstPct, netPayable, prevSubTotal, cumulativeSubTotal, project){
   const sc = wo.ra_subcontractors || {};
-  const lineMap = {};
-  state.billLines.forEach(e => { lineMap[e.wo_line_item_id] = e.this_qty; });
+  const lineMap = {}, wbsMap = {};
+  state.billLines.forEach(e => {
+    lineMap[e.wo_line_item_id] = (lineMap[e.wo_line_item_id] || 0) + Number(e.this_qty || 0);
+    const bi = (state.budgetItems || []).find(b => b.id === e.budget_item_id);
+    if(bi && Number(e.this_qty) > 0) (wbsMap[e.wo_line_item_id] = wbsMap[e.wo_line_item_id] || []).push(`${getStagePath(bi.stage_id)} › ${bi.description} (${fmtNum(e.this_qty)})`);
+  });
 
   const rows = lines.map((l, idx) => {
     const item = woLineItem(l);
@@ -3270,7 +3363,7 @@ function printBill(bill, wo, lines, subTotal, retentionAmt, tdsAmt, safetyAmt, d
     const cumQty = prevQty + Number(thisQty);
     return `<tr>
       <td>${idx+1}</td>
-      <td>${escapeHtml(item.description||'')}</td>
+      <td>${escapeHtml(item.description||'')}${(wbsMap[l.id] || []).map(t => `<div class="wo-doc-scope">WBS: ${escapeHtml(t)}</div>`).join('')}</td>
       <td class="num">${escapeHtml(item.unit||'')}</td>
       <td class="num">${l.activity==='lumpsum' ? '—' : fmtNum(rate)}</td>
       <td class="num">${fmtNum(prevQty)}</td>
@@ -3400,18 +3493,21 @@ function renderBillLedgerNote(wo, netPayable){
 }
 
 async function saveBillLines(billId, thenSubmit){
-  // Editable lines come straight from their inputs. Locked lines never render
-  // an input (they're shown as a static value instead), so without this
-  // they'd silently vanish on save — pull their existing saved qty forward instead.
+  // Rows come straight from the screen: each row = WO line + the budget WBS item it is billed against + qty.
+  // Locked lines never render an input, so carry their saved qty forward instead of dropping them.
   const editedIds = new Set([...document.querySelectorAll('.bill-line-qty')].map(inp => inp.dataset.line));
-  const rows = [...document.querySelectorAll('.bill-line-qty')]
-    .map(inp => ({ bill_id: billId, wo_line_item_id: inp.dataset.line, this_qty: parseFloat(inp.value) || 0 }));
+  const rows = [...document.querySelectorAll('.bill-line-qty')].map(inp => {
+    const it = document.querySelector(`.bill-wbs-item[data-row="${inp.dataset.row}"]`);
+    return { bill_id: billId, wo_line_item_id: inp.dataset.line, this_qty: parseFloat(inp.value) || 0, budget_item_id: (it ? it.value : inp.dataset.ref) || null };
+  });
   state.billLines.forEach(e => {
     if(!editedIds.has(e.wo_line_item_id) && Number(e.this_qty) > 0){
-      rows.push({ bill_id: billId, wo_line_item_id: e.wo_line_item_id, this_qty: Number(e.this_qty) });
+      rows.push({ bill_id: billId, wo_line_item_id: e.wo_line_item_id, this_qty: Number(e.this_qty), budget_item_id: e.budget_item_id || null });
     }
   });
   const finalRows = rows.filter(r => r.this_qty > 0);
+  const missing = finalRows.filter(r => !r.budget_item_id);
+  if(missing.length){ toast('Every billed line must be against a budget WBS item — pick the floor and budget item for each line.', true); return; }
   const debitAmountEl = document.getElementById('billDebitAmount');
   const debitNoteEl = document.getElementById('billDebitNote');
   const gstSelectEl = document.getElementById('billGstSelect');
@@ -3421,12 +3517,22 @@ async function saveBillLines(billId, thenSubmit){
   try{
     const { error: debitErr } = await withRetry(() => sb.from('ra_bills').update({ debit_amount, debit_note, gst_pct }).eq('id', billId));
     if(debitErr){ toast(debitErr.message, true); return; }
+    // Snapshot what is saved right now, so a rejected edit can be rolled back exactly.
+    const { data: snap } = await withRetry(() => sb.from('ra_bill_line_entries').select('bill_id, wo_line_item_id, this_qty, budget_item_id').eq('bill_id', billId));
+    const original = snap || [];
     // Clear then reinsert this bill's lines — simplest way to handle add/remove/change in one pass.
     const { error: delErr } = await withRetry(() => sb.from('ra_bill_line_entries').delete().eq('bill_id', billId));
     if(delErr){ toast(delErr.message, true); return; }
     if(finalRows.length){
       const { error: insErr } = await withRetry(() => sb.from('ra_bill_line_entries').insert(finalRows));
-      if(insErr){ toast(insErr.message, true); return; }
+      if(insErr){
+        // Put the previously saved lines back so a rejected edit never leaves the bill half-empty.
+        await sb.from('ra_bill_line_entries').delete().eq('bill_id', billId);
+        if(original.length) await sb.from('ra_bill_line_entries').insert(original);
+        if(await bwHandleCapError(insErr, billId)) return saveBillLines(billId, thenSubmit);
+        await loadBillEntry(billId, state.woDetail.id); renderMain();
+        return;
+      }
     }
     if(thenSubmit){
       await submitBill(billId);
@@ -3439,10 +3545,29 @@ async function saveBillLines(billId, thenSubmit){
   } catch(err){ toast('Could not reach the server — please try again.', true); console.error(err); }
 }
 
+// A floor-budget breach is a hard stop. Only the owner can authorise it, with a written reason that is stored on the bill.
+async function bwHandleCapError(err, billId){
+  const msg = (err && err.message) || '';
+  if(!/FLOOR_BUDGET_EXCEEDED/.test(msg)){ toast(msg, true); return false; }
+  const clean = msg.replace(/^FLOOR_BUDGET_EXCEEDED:\s*/, '');
+  if(!isOwner()){ toast('Not allowed — ' + clean + ' Only the Owner can approve going above the floor budget.', true); return false; }
+  const reason = prompt('FLOOR BUDGET EXCEEDED\n\n' + clean + '\n\nTo go ahead, type the reason (stored on the bill). Cancel to stop:');
+  if(reason === null) return false;
+  if(!reason.trim()){ toast('A reason is required to exceed the floor budget.', true); return false; }
+  const { data: { user } } = await sb.auth.getUser();
+  const { error } = await sb.from('ra_bills').update({ override_reason: reason.trim(), override_by: user.id }).eq('id', billId);
+  if(error){ toast(error.message, true); return false; }
+  return true;
+}
+
 async function submitBill(billId){
   try{
     const { error } = await withRetry(() => sb.from('ra_bills').update({ status: 'submitted', submitted_at: new Date().toISOString(), rejection_reason: null }).eq('id', billId));
-    if(error){ toast(error.message, true); return; }
+    if(error){
+      if(await bwHandleCapError(error, billId)) return submitBill(billId);
+      await loadBillEntry(billId, state.woDetail.id); renderMain();
+      return;
+    }
     toast('Bill submitted.');
     state.billsCacheProjectId = null;
     await loadBillEntry(billId, state.woDetail.id);
