@@ -423,6 +423,8 @@
   .wo-doc-table th, .wo-doc-table td{ border:1px solid #000; padding:7px 8px; text-align:left; vertical-align:top; }
   .wo-doc-table th{ background:#EFF2F7; font-size:9.5px; text-transform:uppercase; letter-spacing:.03em; }
   .wo-doc-table td.num{ text-align:right; white-space:nowrap; }
+  .wo-doc-deduct{ width:100%; }
+  .wo-doc-deduct-lines{ font-size:9px; line-height:1.45; font-weight:400; margin-top:2px; }
   .wo-doc-table-narrow{ width:auto; min-width:280px; max-width:360px; }
   .wo-doc-scope{ font-size:10px; color:#000; margin-top:4px; white-space:pre-wrap; }
   .wo-doc-total-row td{ font-weight:700; background:#F7F5EF; }
@@ -2925,8 +2927,9 @@ function renderWODetail(project){
 
       <h4 class="wo-lines-title">Bills</h4>
       <div class="toolbar">
-        <button class="btn primary" id="newBillBtn" ${!canCreateWO()?'disabled':''}>+ New Bill</button>
+        <button class="btn primary" id="newBillBtn" ${(!canCreateWO()||wo.billing_locked)?'disabled':''}>+ New Bill</button>
       </div>
+      ${wo.billing_locked ? `<div class="locked-note">🔒 This Work Order is locked${wo.lock_reason?' — '+escapeHtml(wo.lock_reason):''}. No new bill can be raised and bills cannot be edited or submitted until the Owner unlocks it. Existing bills can still be viewed and printed.</div>` : ''}
       <div id="billList"></div>
     </div>
   `;
@@ -2934,6 +2937,7 @@ function renderWODetail(project){
   document.getElementById('backToWOList').onclick = () => { state.viewingWOId = null; state.woDetail = null; renderMain(); };
   document.getElementById('newBillBtn').onclick = async () => {
     const btn = document.getElementById('newBillBtn');
+    if(wo.billing_locked){ toast('This Work Order is locked — billing is not possible until the Owner unlocks it.', true); return; }
     if(wo.status==='draft'){ toast('This Work Order is still a draft — edit it and choose Create Work Order before billing.', true); return; }
     btn.disabled = true; btn.textContent = 'Creating…';
     const bill = await createDraftBill(wo.id);
@@ -3135,7 +3139,8 @@ function renderBillEntry(project){
   // edit while submitted still re-validates against the budget cap live (the
   // per-row DB trigger fires on every change regardless of how it got there).
   const isFinalized = !!bill.finalized_at;
-  const isEditable = !isFinalized && (bill.status === 'draft' || bill.status === 'submitted') && canCreateWO();
+  const woLocked = !!wo.billing_locked;
+  const isEditable = !isFinalized && !woLocked && (bill.status === 'draft' || bill.status === 'submitted') && canCreateWO();
   const canDelete = !isFinalized && (isOwner() || ((bill.status === 'draft' || bill.status === 'submitted') && canCreateWO()));
 
   const defaultBI = (l) => l.ref_budget_item_id || l.budget_item_id || null;
@@ -3209,8 +3214,9 @@ function renderBillEntry(project){
         <button class="btn tiny" id="printBillBtn" style="font-weight:600;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> Print / Download PDF</button>
         ${canDelete ? `<button class="icon-btn" id="deleteBillBtn" title="Delete bill" style="font-size:14px;">✕</button>` : ''}
       </h3>
-      <div class="wo-rate-note">${wo.ra_subcontractors ? escapeHtml(wo.ra_subcontractors.name) : ''} · Period ${bill.period_from} to ${bill.period_to}${isFinalized ? '' : (!isEditable && bill.status!=='draft' ? ' · Locked — approved bills can no longer be edited' : '')}</div>
+      <div class="wo-rate-note">${wo.ra_subcontractors ? escapeHtml(wo.ra_subcontractors.name) : ''} · Period ${bill.period_from} to ${bill.period_to}${isFinalized ? '' : (woLocked ? ' · Work Order locked — view only' : !isEditable && bill.status!=='draft' ? ' · Locked — approved bills can no longer be edited' : '')}</div>
 
+      ${woLocked && !isFinalized ? `<div class="locked-note">🔒 This Work Order is locked${wo.lock_reason?' — '+escapeHtml(wo.lock_reason):''}. This bill cannot be edited or submitted until the Owner unlocks the Work Order.</div>` : ''}
       ${isFinalized ? `<div class="locked-note"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Finalized by Accounts on ${new Date(bill.finalized_at).toLocaleDateString('en-IN')} — this bill is now permanently locked. No edits or deletion, by anyone, including Owner.</div>` : ''}
       ${bill.rejection_reason ? `<div class="locked-note" style="color:var(--red);border-color:rgba(193,69,58,0.35);background:rgba(193,69,58,0.08);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg> Rejected: ${escapeHtml(bill.rejection_reason)}</div>` : ''}
 
@@ -3510,16 +3516,17 @@ function printBill(bill, wo, lines, subTotal, retentionAmt, tdsAmt, safetyAmt, d
         </tbody>
       </table>
 
-      <h3 class="section">Recovery Details</h3>
-      <table class="wo-doc-table wo-doc-table-narrow">
-        <thead><tr><th>Head</th><th>Rate</th><th>This Bill ₹</th></tr></thead>
+      <table class="wo-doc-table wo-doc-deduct" style="margin-top:14px;">
         <tbody>
-          <tr><td>Retention</td><td class="num">${wo.retention_pct}%</td><td class="num">${fmtNum(retentionAmt)}</td></tr>
-          <tr><td>TDS</td><td class="num">${wo.tds_pct}%</td><td class="num">${fmtNum(tdsAmt)}</td></tr>
-          <tr><td>Safety</td><td class="num">${wo.safety_pct?wo.safety_pct+'%':'Fixed'}</td><td class="num">${fmtNum(safetyAmt)}</td></tr>
-          ${debitAmt ? `<tr><td>Debit${bill.debit_note?' — '+escapeHtml(bill.debit_note):''}</td><td class="num">—</td><td class="num">${fmtNum(debitAmt)}</td></tr>` : ''}
-          <tr class="wo-doc-total-row"><td colspan="2">Total Deductions</td><td class="num">₹${fmtNum(totalDeductions)}</td></tr>
-          <tr><td>GST${bill.gst_pct!==null&&bill.gst_pct!==undefined?' (overridden)':''}</td><td class="num">${gstPct}%</td><td class="num">+${fmtNum(gstAmt)}</td></tr>
+          <tr>
+            <td style="text-align:right;"><b style="font-size:11px;">Deduction</b>
+              <div class="wo-doc-deduct-lines">
+                ${tdsAmt ? `TDS @${Number(wo.tds_pct||0).toFixed(2)}% - ${fmtNum(tdsAmt)}<br>` : ''}${retentionAmt ? `Retention @${Number(wo.retention_pct||0).toFixed(2)}% - ${fmtNum(retentionAmt)}<br>` : ''}${safetyAmt ? `Safety${wo.safety_pct?' @'+Number(wo.safety_pct).toFixed(2)+'%':''} - ${fmtNum(safetyAmt)}<br>` : ''}${debitAmt ? `Debit${bill.debit_note?' ('+escapeHtml(bill.debit_note)+')':''} - ${fmtNum(debitAmt)}<br>` : ''}
+              </div>
+            </td>
+            <td class="num" style="width:110px;"><b>${fmtNum(totalDeductions)}</b></td>
+          </tr>
+          ${gstAmt ? `<tr><td style="text-align:right;font-size:9.5px;">GST @${gstPct}%${bill.gst_pct!==null&&bill.gst_pct!==undefined?' (overridden)':''} (added)</td><td class="num">+${fmtNum(gstAmt)}</td></tr>` : ''}
         </tbody>
       </table>
 
@@ -3795,8 +3802,8 @@ function renderBillsTab(project){
 
   document.getElementById('newBillFromBillsTabBtn').onclick = () => {
     const picker = document.getElementById('newBillPicker');
-    const billableWOs = state.workOrders.filter(wo => wo.status !== 'draft');
-    if(!billableWOs.length){ toast('No Work Orders on this project yet — create one under the Work Orders tab first (drafts can\'t be billed).', true); return; }
+    const billableWOs = state.workOrders.filter(wo => wo.status !== 'draft' && !wo.billing_locked);
+    if(!billableWOs.length){ toast('No billable Work Orders — drafts and locked Work Orders can\'t be billed.', true); return; }
     picker.style.display = 'block';
     picker.innerHTML = `
       <div class="wo-form" style="margin-bottom:16px;">
