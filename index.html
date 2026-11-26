@@ -2484,7 +2484,7 @@ function renderSubcontractorLedger(){
       <div class="bitem-head" style="grid-template-columns:1fr 1fr 90px 90px 100px;"><span>Project</span><span>WO / Bill</span><span class="qty">Period</span><span class="rate">Status</span><span class="amount">Net ₹</span></div>
       ${bills.map(b => `<div class="bitem" style="grid-template-columns:1fr 1fr 90px 90px 100px;">
         <span class="desc">${escapeHtml(b._projectName)}</span>
-        <span class="unit">${escapeHtml(b._woRef)} · Bill #${b.bill_no}</span>
+        <span class="unit">${escapeHtml(b._woRef)} · ${escapeHtml(b.bill_ref||('Bill #'+(b.project_bill_no||'—')))} · Sub bill ${b.bill_no}</span>
         <span class="qty">${b.period_to||''}</span>
         <span class="rate">${b.status}</span>
         <span class="amount">₹${fmtNum(b._net)}</span>
@@ -2959,7 +2959,7 @@ function renderWODetail(project){
     row.className = 'wo-card';
     row.innerHTML = `
       <div class="wo-card-main">
-        <div class="wo-sc-name">Bill #${b.bill_no}</div>
+        <div class="wo-sc-name">${escapeHtml(b.bill_ref||('Bill #'+(b.project_bill_no||'—')))} <span style="font-weight:400;font-size:12px;">· Sub bill ${b.bill_no}</span></div>
         <div class="wo-meta">${b.period_from||'—'} to ${b.period_to||'—'}</div>
       </div>
       <div class="wo-card-rates">
@@ -2979,8 +2979,7 @@ function renderWODetail(project){
 
 async function createDraftBill(woId){
   try{
-    const { data: existing } = await withRetry(() => sb.from('ra_bills').select('bill_no').eq('wo_id', woId).order('bill_no', { ascending: false }).limit(1));
-    const nextNo = (existing && existing.length) ? existing[0].bill_no + 1 : 1;
+    const nextNo = 0;   // placeholder — the database assigns both the project bill number and the subcontractor's RA number
     const today = new Date();
     const periodTo = today.toISOString().slice(0,10);
     const periodFrom = new Date(today.getTime() - 14*24*60*60*1000).toISOString().slice(0,10);
@@ -3105,10 +3104,11 @@ function bwCollect(lines, skipRow){
     if(skipRow && inp.dataset.row === skipRow) return;
     seen.add(inp.dataset.line);
     const it = document.querySelector(`.bill-wbs-item[data-row="${inp.dataset.row}"]`);
-    out.push({ wo_line_item_id: inp.dataset.line, budget_item_id: (it ? it.value : inp.dataset.ref) || null, this_qty: parseFloat(inp.value) || 0 });
+    const rm = document.querySelector(`.bill-remark[data-row="${inp.dataset.row}"]`);
+    out.push({ wo_line_item_id: inp.dataset.line, budget_item_id: (it ? it.value : inp.dataset.ref) || null, this_qty: parseFloat(inp.value) || 0, remarks: rm ? rm.value.trim() : '' });
   });
   const hid = bwHiddenSet();
-  (state.billLines || []).forEach(e => { if(!seen.has(e.wo_line_item_id) && !hid.has(e.wo_line_item_id) && Number(e.this_qty) > 0) out.push({ wo_line_item_id: e.wo_line_item_id, budget_item_id: e.budget_item_id || null, this_qty: Number(e.this_qty) }); });
+  (state.billLines || []).forEach(e => { if(!seen.has(e.wo_line_item_id) && !hid.has(e.wo_line_item_id) && Number(e.this_qty) > 0) out.push({ wo_line_item_id: e.wo_line_item_id, budget_item_id: e.budget_item_id || null, this_qty: Number(e.this_qty), remarks: e.remarks || '' }); });
   return out;
 }
 async function bwLoadOthers(project, excludeBillId){
@@ -3174,7 +3174,8 @@ function renderBillEntry(project){
       <div class="bitem" data-row="${rid}" style="grid-template-columns:1fr 60px 80px 90px 90px 90px 110px;">
         <span class="desc">${k === 0 ? escapeHtml(item.description||'') + lockBadge : '<span style="color:#8B8676;">↳ same item, another floor</span>'}
           ${LS ? `<div class="wo-line-path">${escapeHtml(getStagePath(item.stage_id))}</div>` : wbsPickerHtml(rid, e.budget_item_id, canEditRow)}
-          ${canEditRow && !LS && last ? `<a href="#" class="bill-split" data-line="${l.id}" style="font-size:12px;">+ bill part of this against another floor</a>` : ''}
+          ${LS ? '' : (canEditRow ? `<input class="bill-remark" data-row="${rid}" placeholder="Remarks for this item (optional)" maxlength="300" value="${escapeHtml(e.remarks||'')}" style="width:100%;margin-top:5px;font-size:12px;">` : (e.remarks ? `<div class="wo-line-path" style="font-style:italic;">Remarks: ${escapeHtml(e.remarks)}</div>` : ''))}
+          ${canEditRow && !LS && last ? `<a href="#" class="bill-split" data-line="${l.id}" style="font-size:12px;">+ add this item again against another WBS</a>` : ''}
           ${canEditRow && !LS && k === 0 ? `<a href="#" class="bill-hide" data-line="${l.id}" title="Leave this Work Order line out of this bill (quantity becomes zero and it is not shown or printed)" style="font-size:12px;color:var(--red);margin-left:10px;">✕ not in this bill</a>` : ''}
           ${canEditRow && !LS && k > 0 ? `<a href="#" class="bill-rmrow" data-row="${rid}" style="font-size:12px;color:var(--red);margin-left:10px;">remove row</a>` : ''}</span>
         <span class="unit">${escapeHtml(item.unit||'')}</span>
@@ -3204,7 +3205,7 @@ function renderBillEntry(project){
     <button class="btn tiny" id="backToWO" style="margin-bottom:14px;">${state.billEntryReturnTo === 'bills' ? '← Back to Bills' : '← Back to Work Order'}</button>
     <div class="wo-form">
       <h3 class="wo-form-title">
-        Bill #${bill.bill_no} <span class="badge ${bill.status==='draft'?'internal':'billable'}">${bill.status}</span>${isFinalized ? ` <span class="finalized-chip" title="Finalized ${new Date(bill.finalized_at).toLocaleDateString('en-IN')}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Finalized</span>` : ''}
+        ${escapeHtml(bill.bill_ref||('Bill #'+(bill.project_bill_no||'—')))} <span style="font-weight:400;font-size:14px;">· Sub bill ${bill.bill_no}</span> <span class="badge ${bill.status==='draft'?'internal':'billable'}">${bill.status}</span>${isFinalized ? ` <span class="finalized-chip" title="Finalized ${new Date(bill.finalized_at).toLocaleDateString('en-IN')}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Finalized</span>` : ''}
         <button class="btn tiny" id="printBillBtn" style="font-weight:600;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> Print / Download PDF</button>
         ${canDelete ? `<button class="icon-btn" id="deleteBillBtn" title="Delete bill" style="font-size:14px;">✕</button>` : ''}
       </h3>
@@ -3217,7 +3218,7 @@ function renderBillEntry(project){
       <div class="bitem-head" style="grid-template-columns:1fr 60px 80px 90px 90px 90px 110px;">
         <span>${LS ? 'Item – floor' : 'Item'}</span><span>Unit</span><span class="rate">${LS ? '' : 'Rate'}</span><span class="qty">${LS ? 'Previous ₹' : 'Previous'}</span><span class="qty">${LS ? 'This bill ₹' : 'This Bill'}</span><span class="qty">${LS ? 'Cumulative ₹' : 'Cumulative'}</span><span class="amount">This Amount</span>
       </div>
-      <div id="billRows">${rowsHtml}${isEditable && hiddenCount ? `<div class="wo-rate-note" style="margin:8px 0;">${hiddenCount} Work Order line${hiddenCount>1?'s':''} left out of this bill. <a href="#" id="billUnhide">Show them again</a></div>` : ''}${LS && !lines.length ? '<div class="wo-lines-empty">No items added yet — choose category, floor and item above.</div>' : ''}</div>
+      <div id="billRows">${rowsHtml}${isEditable ? `<div class="wo-rate-note" style="margin:10px 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><b>+ Add item to this bill:</b> <select id="billAddSel" style="max-width:420px;"><option value="">Choose Work Order line…</option>${lines.map(l => { const it = woLineItem(l); return `<option value="${l.id}">${escapeHtml(it.description||'')} — ${escapeHtml(it.unit||'')}${l.activity==='lumpsum' ? '' : ' @ ₹'+fmtNum(Number(l.agreed_rate||0))}</option>`; }).join('')}</select> <button class="btn tiny" id="billAddBtn" type="button">Add</button> <span style="font-size:12px;color:#8B8676;">Same line can be added again against a different WBS.</span></div>` : ''}${isEditable && hiddenCount ? `<div class="wo-rate-note" style="margin:8px 0;">${hiddenCount} Work Order line${hiddenCount>1?'s':''} left out of this bill. <a href="#" id="billUnhide">Show them again</a></div>` : ''}${LS && !lines.length ? '<div class="wo-lines-empty">No items added yet — choose category, floor and item above.</div>' : ''}</div>
 
 
 <h4 class="wo-lines-title">Debit / Recovery (optional)</h4>
@@ -3372,6 +3373,8 @@ function renderBillEntry(project){
     const reRender = (mut) => { state.billLines = bwCollect(lines); mut(state.billLines); renderBillEntry(project); };
     document.querySelectorAll('.bill-split').forEach(a => a.onclick = ev => { ev.preventDefault(); reRender(arr => arr.push({ wo_line_item_id: a.dataset.line, budget_item_id: null, this_qty: 0 })); });
     document.querySelectorAll('.bill-hide').forEach(a => a.onclick = ev => { ev.preventDefault(); const lid = a.dataset.line; state.billLines = bwCollect(lines).filter(e => e.wo_line_item_id !== lid); bwHiddenSet().add(lid); renderBillEntry(project); });
+    const addBtn = document.getElementById('billAddBtn');
+    if(addBtn) addBtn.onclick = () => { const lid = document.getElementById('billAddSel').value; if(!lid){ toast('Choose the Work Order line to add.', true); return; } state.billLines = bwCollect(lines); bwHiddenSet().delete(lid); state.billLines.push({ wo_line_item_id: lid, budget_item_id: null, this_qty: 0 }); renderBillEntry(project); toast('Row added — choose its WBS and enter the quantity.'); };
     const unh = document.getElementById('billUnhide'); if(unh) unh.onclick = ev => { ev.preventDefault(); state.billLines = bwCollect(lines); bwHiddenSet().clear(); renderBillEntry(project); };
     document.querySelectorAll('.bill-rmrow').forEach(a => a.onclick = ev => { ev.preventDefault(); const rid = a.dataset.row; const cur = bwCollect(lines, rid); state.billLines = cur; renderBillEntry(project); });
   }
@@ -3425,8 +3428,9 @@ async function rejectBill(billId){
 
 function printBill(bill, wo, lines, subTotal, retentionAmt, tdsAmt, safetyAmt, debitAmt, gstAmt, gstPct, netPayable, prevSubTotal, cumulativeSubTotal, project){
   const sc = wo.ra_subcontractors || {};
-  const lineMap = {}, wbsMap = {};
+  const lineMap = {}, wbsMap = {}, remMap = {};
   state.billLines.forEach(e => {
+    if(e.remarks && Number(e.this_qty) > 0) (remMap[e.wo_line_item_id] = remMap[e.wo_line_item_id] || []).push(e.remarks);
     lineMap[e.wo_line_item_id] = (lineMap[e.wo_line_item_id] || 0) + Number(e.this_qty || 0);
     const bi = (state.budgetItems || []).find(b => b.id === e.budget_item_id);
     if(bi && Number(e.this_qty) > 0) (wbsMap[e.wo_line_item_id] = wbsMap[e.wo_line_item_id] || []).push(`${getStagePath(bi.stage_id)} › ${bi.description} (${fmtNum(e.this_qty)})`);
@@ -3442,7 +3446,7 @@ function printBill(bill, wo, lines, subTotal, retentionAmt, tdsAmt, safetyAmt, d
     const cumQty = prevQty + Number(thisQty);
     return `<tr>
       <td>${++slNo}</td>
-      <td>${escapeHtml(item.description||'')}${(wbsMap[l.id] || []).map(t => `<div class="wo-doc-scope">WBS: ${escapeHtml(t)}</div>`).join('')}</td>
+      <td>${escapeHtml(item.description||'')}${(wbsMap[l.id] || []).map(t => `<div class="wo-doc-scope">WBS: ${escapeHtml(t)}</div>`).join('')}${(remMap[l.id] || []).map(t => `<div class="wo-doc-scope"><i>Remarks: ${escapeHtml(t)}</i></div>`).join('')}</td>
       <td class="num">${escapeHtml(item.unit||'')}</td>
       <td class="num">${l.activity==='lumpsum' ? '—' : fmtNum(rate)}</td>
       <td class="num">${fmtNum(prevQty)}</td>
@@ -3467,7 +3471,8 @@ function printBill(bill, wo, lines, subTotal, retentionAmt, tdsAmt, safetyAmt, d
       ${buildPrintHeader(false)}
       <div class="wo-doc-title">SUB-CONTRACTOR BILL</div>
       <div class="wo-doc-meta">
-        <div><div class="l">Bill No</div>${bill.bill_no}</div>
+        <div><div class="l">Bill No</div>${escapeHtml(bill.bill_ref||String(bill.project_bill_no||''))}</div>
+        <div><div class="l">Subcontractor Bill No</div>${bill.bill_no}</div>
         <div><div class="l">Bill Period</div>${bill.period_from} to ${bill.period_to}</div>
         <div><div class="l">Status</div>${bill.status.toUpperCase()}</div>
       </div>
@@ -3542,12 +3547,12 @@ function printBill(bill, wo, lines, subTotal, retentionAmt, tdsAmt, safetyAmt, d
       ${buildPrintFooter()}
     </div>
   `;
-  setTimeout(() => printWithFilename(`CCI RA Bill ${bill.bill_no} ${sc.name||'Subcontractor'}-${project?project.name:''}`), 100);
+  setTimeout(() => printWithFilename(`${(bill.bill_ref||('Bill '+bill.bill_no)).replace(/[\/\\]/g,'-')} ${sc.name||'Subcontractor'}-${project?project.name:''}`), 100);
 }
 
 async function deleteBill(bill){
   if(bill.finalized_at){ toast('This bill is finalized and permanently locked — it cannot be deleted.', true); return; }
-  if(!confirm(`Delete Bill #${bill.bill_no}? It'll move to the Bin and can be restored or permanently removed from there.`)) return;
+  if(!confirm(`Delete ${bill.bill_ref||('Bill #'+bill.bill_no)}? It'll move to the Bin and can be restored or permanently removed from there.`)) return;
   try{
     const { data: { user } } = await withRetry(() => sb.auth.getUser());
     const { error } = await withRetry(() => sb.from('ra_bills').update({ deleted_at: new Date().toISOString(), deleted_by: user.id }).eq('id', bill.id));
@@ -3577,11 +3582,12 @@ async function saveBillLines(billId, thenSubmit){
   const editedIds = new Set([...document.querySelectorAll('.bill-line-qty')].map(inp => inp.dataset.line));
   const rows = [...document.querySelectorAll('.bill-line-qty')].map(inp => {
     const it = document.querySelector(`.bill-wbs-item[data-row="${inp.dataset.row}"]`);
-    return { bill_id: billId, wo_line_item_id: inp.dataset.line, this_qty: parseFloat(inp.value) || 0, budget_item_id: (it ? it.value : inp.dataset.ref) || null };
+    const rm = document.querySelector(`.bill-remark[data-row="${inp.dataset.row}"]`);
+    return { bill_id: billId, wo_line_item_id: inp.dataset.line, this_qty: parseFloat(inp.value) || 0, budget_item_id: (it ? it.value : inp.dataset.ref) || null, remarks: (rm && rm.value.trim()) || null };
   });
   state.billLines.forEach(e => {
     if(!editedIds.has(e.wo_line_item_id) && !bwHiddenSet().has(e.wo_line_item_id) && Number(e.this_qty) > 0){
-      rows.push({ bill_id: billId, wo_line_item_id: e.wo_line_item_id, this_qty: Number(e.this_qty), budget_item_id: e.budget_item_id || null });
+      rows.push({ bill_id: billId, wo_line_item_id: e.wo_line_item_id, this_qty: Number(e.this_qty), budget_item_id: e.budget_item_id || null, remarks: e.remarks || null });
     }
   });
   const finalRows = rows.filter(r => r.this_qty > 0);
@@ -3597,7 +3603,7 @@ async function saveBillLines(billId, thenSubmit){
     const { error: debitErr } = await withRetry(() => sb.from('ra_bills').update({ debit_amount, debit_note, gst_pct }).eq('id', billId));
     if(debitErr){ toast(debitErr.message, true); return; }
     // Snapshot what is saved right now, so a rejected edit can be rolled back exactly.
-    const { data: snap } = await withRetry(() => sb.from('ra_bill_line_entries').select('bill_id, wo_line_item_id, this_qty, budget_item_id').eq('bill_id', billId));
+    const { data: snap } = await withRetry(() => sb.from('ra_bill_line_entries').select('bill_id, wo_line_item_id, this_qty, budget_item_id, remarks').eq('bill_id', billId));
     const original = snap || [];
     // Clear then reinsert this bill's lines — simplest way to handle add/remove/change in one pass.
     const { error: delErr } = await withRetry(() => sb.from('ra_bill_line_entries').delete().eq('bill_id', billId));
@@ -3827,7 +3833,7 @@ function renderBillsTab(project){
   };
   document.getElementById('billsExportCsvBtn').onclick = () => {
     const rows = bills.map(b => ({
-      'Bill No': b.bill_no, 'WO Ref': (b.ra_work_orders||{}).wo_ref || '',
+      'Bill No': b.bill_ref || b.project_bill_no || '', 'Subcontractor Bill No': b.bill_no, 'WO Ref': (b.ra_work_orders||{}).wo_ref || '',
       'Subcontractor': ((b.ra_work_orders||{}).ra_subcontractors||{}).name || '',
       'Period From': b.period_from, 'Period To': b.period_to, 'Status': b.status,
       'Net Payable': b._net.toFixed(2)
@@ -3860,7 +3866,7 @@ function renderBillsTab(project){
         const canShowFinalize = (b.status === 'approved' || b.status === 'paid');
         return `
         <tr class="data-row" data-bill="${b.id}" data-wo="${b.wo_id}" style="cursor:pointer;">
-          <td>#${b.bill_no}</td>
+          <td>${escapeHtml(b.bill_ref||('#'+(b.project_bill_no||'—')))} <span class="u">Sub bill ${b.bill_no}</span></td>
           <td>${escapeHtml(sc.name||'')} <span class="u">${escapeHtml(sc.acct_code||'')}</span></td>
           <td>${escapeHtml(wo.wo_ref||'')}</td>
           <td>${b.period_from||'—'} to ${b.period_to||'—'}</td>
@@ -3938,7 +3944,7 @@ function renderBinView(project){
     row.className = 'wo-card';
     row.innerHTML = `
       <div class="wo-card-main">
-        <div class="wo-sc-name">Bill #${b.bill_no} — ${escapeHtml(sc.name||'')}</div>
+        <div class="wo-sc-name">${escapeHtml(b.bill_ref||('Bill #'+(b.project_bill_no||'—')))} (Sub bill ${b.bill_no}) — ${escapeHtml(sc.name||'')}</div>
         <div class="wo-meta">${escapeHtml((b.ra_work_orders||{}).wo_ref||'')} · Deleted ${new Date(b.deleted_at).toLocaleDateString('en-IN')} · was ${b.status}</div>
       </div>
       <div class="wo-card-rates">
@@ -5542,11 +5548,11 @@ function renderStageAddRow(projectId, parentId){
 /* ============================================================================
    MUTATIONS (real Supabase writes)
 ============================================================================ */
-async function createProject(name, location, client_name, start_year){
+async function createProject(name, location, client_name, start_year, abbreviation){
   try{
     const { data: { user } } = await withRetry(() => sb.auth.getUser());
     const { data, error } = await withRetry(() =>
-      sb.from('ra_projects').insert({ name, location, client_name, start_year, created_by: user.id }).select().single()
+      sb.from('ra_projects').insert({ name, location, client_name, start_year, abbreviation: abbreviation || null, created_by: user.id }).select().single()
     );
     if(error){ toast(error.message, true); return null; }
     toast('Project created.');
@@ -5554,10 +5560,10 @@ async function createProject(name, location, client_name, start_year){
   } catch(err){ toast('Could not reach the server — please try again.', true); console.error(err); return null; }
 }
 
-async function updateProject(projectId, name, location, client_name, start_year){
+async function updateProject(projectId, name, location, client_name, start_year, abbreviation){
   try{
     const { data, error } = await withRetry(() =>
-      sb.from('ra_projects').update({ name, location, client_name, start_year }).eq('id', projectId).select().single()
+      sb.from('ra_projects').update({ name, location, client_name, start_year, abbreviation: abbreviation || null }).eq('id', projectId).select().single()
     );
     if(error){ toast(error.message, true); return null; }
     toast('Project updated.');
@@ -5890,6 +5896,7 @@ document.getElementById('newProjBtn').onclick = () => {
     <div class="field"><label>Location</label><input id="npLoc" placeholder="e.g. ECR, Chennai"></div>
     <div class="field"><label>Client name</label><input id="npClient" list="clientNames" placeholder="e.g. ABC Developers — start typing to match an existing client"></div>
     <div class="field"><label>Year of project start</label><input id="npYear" type="number" min="2000" max="2100" step="1" placeholder="e.g. 2026"></div>
+    <div class="field"><label>Project abbreviation (used in bill numbers, e.g. CCI/RA1/<b>AOC</b>)</label><input id="npAbbr" maxlength="8" style="text-transform:uppercase;" placeholder="e.g. AOC"></div>
     <div class="modal-actions">
       <button class="btn" onclick="closeModal()">Cancel</button>
       <button class="btn primary" id="npSave">Create Project</button>
@@ -5901,8 +5908,10 @@ document.getElementById('newProjBtn').onclick = () => {
     const client = document.getElementById('npClient').value.trim();
     const yearVal = document.getElementById('npYear').value;
     const year = yearVal ? parseInt(yearVal, 10) : null;
+    const abbr = document.getElementById('npAbbr').value.trim().toUpperCase();
     if(!name){ toast('Project name is required.', true); return; }
-    const p = await createProject(name, loc, client || null, year);
+    if(!/^[A-Z0-9]{2,8}$/.test(abbr)){ toast('Enter a 2–8 letter project abbreviation (letters/numbers only).', true); return; }
+    const p = await createProject(name, loc, client || null, year, abbr);
     if(p){ closeModal(); state.selectedProjectId = p.id; await loadProjects(); }
   };
 };
@@ -5914,6 +5923,7 @@ function openEditProjectModal(project){
     <div class="field"><label>Location</label><input id="epLoc" value="${escapeHtml(project.location||'')}"></div>
     <div class="field"><label>Client name</label><input id="epClient" list="clientNames" value="${escapeHtml(project.client_name||'')}"></div>
     <div class="field"><label>Year of project start</label><input id="epYear" type="number" min="2000" max="2100" step="1" value="${project.start_year||''}"></div>
+    <div class="field"><label>Project abbreviation (used in bill numbers for new bills; existing bill numbers do not change)</label><input id="epAbbr" maxlength="8" style="text-transform:uppercase;" value="${escapeHtml(project.abbreviation||'')}"></div>
     <div class="modal-actions">
       <button class="btn" onclick="closeModal()">Cancel</button>
       <button class="btn primary" id="epSave">Save Changes</button>
@@ -5925,8 +5935,10 @@ function openEditProjectModal(project){
     const client = document.getElementById('epClient').value.trim();
     const yearVal = document.getElementById('epYear').value;
     const year = yearVal ? parseInt(yearVal, 10) : null;
+    const abbr = document.getElementById('epAbbr').value.trim().toUpperCase();
     if(!name){ toast('Project name is required.', true); return; }
-    const p = await updateProject(project.id, name, loc, client || null, year);
+    if(!/^[A-Z0-9]{2,8}$/.test(abbr)){ toast('Enter a 2–8 letter project abbreviation (letters/numbers only).', true); return; }
+    const p = await updateProject(project.id, name, loc, client || null, year, abbr);
     if(p){ closeModal(); await loadProjects(); }
   };
 }
