@@ -289,10 +289,10 @@ function tabsFor() {
     batch: S.reqs.filter(r => r.status === 'approved').length
   };
   const T = {
-    owner: [['dash', 'Dashboard'], ['reqs', 'Requests'], ['appr', 'CEO queue', n.ceo], ['batches', 'Batches', n.batch], ['inflow', 'Inflows & limits'], ['auto', 'Auto payment sheet'], ['payees', 'Payees'], ['audit', 'Audit'], ['admin', 'Admin']],
-    accounts: [['dash', 'Dashboard'], ['reqs', 'Requests'], ['batches', 'Batches', n.batch], ['inflow', 'Inflows'], ['auto', 'Auto payment sheet'], ['payees', 'Payees'], ['audit', 'Audit']],
-    ceo: [['appr', 'Approvals', n.ceo], ['dash', 'Dashboard']],
-    partner: [['verify', 'Verify batches', n.partner], ['dash', 'Dashboard']]
+    owner: [['dash', 'Dashboard'], ['reqs', 'Requests'], ['register', 'Payments register'], ['appr', 'CEO queue', n.ceo], ['batches', 'Batches', n.batch], ['inflow', 'Inflows & limits'], ['auto', 'Auto payment sheet'], ['payees', 'Payees'], ['audit', 'Audit'], ['admin', 'Admin']],
+    accounts: [['dash', 'Dashboard'], ['reqs', 'Requests'], ['register', 'Payments register'], ['batches', 'Batches', n.batch], ['inflow', 'Inflows'], ['auto', 'Auto payment sheet'], ['payees', 'Payees'], ['audit', 'Audit']],
+    ceo: [['appr', 'Approvals', n.ceo], ['register', 'Payments register'], ['dash', 'Dashboard']],
+    partner: [['verify', 'Verify batches', n.partner], ['register', 'Payments register'], ['dash', 'Dashboard']]
   };
   return T[role()] || [];
 }
@@ -310,7 +310,7 @@ function renderShell() {
 }
 async function renderMain() {
   const m = $('#main'); if (!m) return;
-  const V = { dash: vDash, reqs: vReqs, appr: vAppr, batches: vBatches, inflow: vInflow, payees: vPayees, audit: vAudit, admin: vAdmin, verify: vVerify, auto: vAuto };
+  const V = { dash: vDash, reqs: vReqs, appr: vAppr, batches: vBatches, inflow: vInflow, payees: vPayees, audit: vAudit, admin: vAdmin, verify: vVerify, auto: vAuto, register: vRegister };
   if (S.tab === 'auto' && !A().loaded && !A().loading) { setTimeout(autoLoad, 0); }
   if (S.tab === 'audit' && !S.audit.length) { await guard(async () => { S.audit = await qry(sb.from('pay_audit').select('*').order('at', { ascending: false }).limit(500)); }); }
   m.innerHTML = (V[S.tab] || vDash)();
@@ -1038,6 +1038,73 @@ function payeeFormHtml(p) {
 }
 
 /* ---------- audit ---------- */
+/* ---------- payments register: what was paid, day by day ---------- */
+const ymd = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+const RG = () => S.ui.rg || (S.ui.rg = { preset: 'today', from: '', to: '', company: '', project: '', cat: '', ver: 'all', q: '', sel: new Set() });
+function rgRange() {
+  const g = RG(), t = new Date(); t.setHours(12, 0, 0, 0);
+  const add = n => { const x = new Date(t); x.setDate(x.getDate() + n); return ymd(x); };
+  const dow = (t.getDay() + 6) % 7, today = ymd(t);
+  switch (g.preset) {
+    case 'yesterday': return { a: add(-1), b: add(-1) };
+    case 'last7': return { a: add(-6), b: today };
+    case 'week': return { a: add(-dow), b: today };
+    case 'lastweek': return { a: add(-dow - 7), b: add(-dow - 1) };
+    case 'month': return { a: today.slice(0, 8) + '01', b: today };
+    case 'custom': return { a: g.from || today, b: g.to || g.from || today };
+    default: return { a: today, b: today };
+  }
+}
+const rgGross = r => num(r.paid_amount) + ((!r.parent_id && Math.abs(num(r.paid_amount) - num(r.net_amount)) < 0.01) ? num(r.tds_amount) : 0);
+const rgNeedsVerify = r => r.is_backfill && !r.entry_verified_at;
+function rgRows() {
+  const g = RG(), { a, b } = rgRange(), q = g.q.toLowerCase();
+  return S.reqs.filter(r => r.status === 'paid' && r.paid_date && r.paid_date >= a && r.paid_date <= b
+    && (!g.company || (g.company === '__none' ? !r.paying_company : r.paying_company === g.company))
+    && (!g.project || r.project_id === g.project) && (!g.cat || r.category === g.cat)
+    && (g.ver === 'all' || (g.ver === 'unverified' ? rgNeedsVerify(r) : !rgNeedsVerify(r)))
+    && (!q || (r.payee_name + ' ' + (r.utr || '') + ' ' + (r.bill_ref || '') + ' ' + (r.description || '') + ' ' + (r.req_no || '')).toLowerCase().includes(q)))
+    .sort((x, y) => (y.paid_date > x.paid_date ? 1 : y.paid_date < x.paid_date ? -1 : String(y.paid_at || '').localeCompare(String(x.paid_at || ''))));
+}
+function vRegister() {
+  const g = RG(), { a, b } = rgRange(), L = rgRows(), isOwner = role() === 'owner';
+  const presets = [['today', 'Today'], ['yesterday', 'Yesterday'], ['last7', 'Last 7 days'], ['week', 'This week'], ['lastweek', 'Last week'], ['month', 'This month'], ['custom', 'Custom']];
+  const projs = [...new Map(S.reqs.filter(r => r.project_id).map(r => [r.project_id, r.project_name])).entries()].sort((x, y) => String(x[1]).localeCompare(String(y[1])));
+  const net = sum(L, r => num(r.paid_amount)), gross = sum(L, rgGross), tds = gross - net, unv = L.filter(rgNeedsVerify);
+  const by = (keyFn) => { const m = {}; L.forEach(r => { const k = keyFn(r); (m[k] = m[k] || { n: 0, v: 0 }); m[k].n++; m[k].v += num(r.paid_amount); }); return Object.entries(m).sort((x, y) => y[1].v - x[1].v); };
+  const days = {}; L.forEach(r => (days[r.paid_date] = days[r.paid_date] || []).push(r));
+  const body = Object.keys(days).sort().reverse().map(d => {
+    const rs = days[d], dn = sum(rs, r => num(r.paid_amount)), dun = rs.filter(rgNeedsVerify);
+    return `<tr class="tot"><td colspan="3"><b>${fdate(d)}</b> · ${rs.length} payment${rs.length > 1 ? 's' : ''}${dun.length ? ` · <span class="bad">${dun.length} unverified</span>` : ''}</td><td colspan="5" class="r amt">Day total (net) <b>${inr0(dn)}</b></td><td colspan="3" class="r">${isOwner && dun.length ? `<button class="btn s" data-act="rgverifyday" data-d="${d}">Verify this day</button>` : ''}</td></tr>`
+      + rs.map(r => `<tr><td>${isOwner && rgNeedsVerify(r) ? `<input type="checkbox" data-act="rgck" data-id="${r.id}" ${g.sel.has(r.id) ? 'checked' : ''}>` : ''}</td>
+        <td>${esc(r.paying_company || '—')}</td><td>${esc(r.project_name || '')}</td><td>${esc(r.payee_name || '')}<div class="mut" style="font-size:11px">${esc(CATS[r.category] || '')}${r.bill_ref ? ' · ' + esc(r.bill_ref) : ''}</div></td>
+        <td class="r amt">${inr0(rgGross(r))}</td><td class="r amt">${inr0(rgGross(r) - num(r.paid_amount))}</td><td class="r amt"><b>${inr0(r.paid_amount)}</b></td>
+        <td class="mono" style="font-size:12px">${esc(r.utr || '')}</td><td>${r.is_backfill ? '<span class="badge b-open">Past entry</span>' : '<span class="badge b-green">Batch</span>'}</td>
+        <td>${r.is_backfill ? (r.entry_verified_at ? `<span class="badge b-green">Verified</span><div class="mut" style="font-size:11px">${fdt(r.entry_verified_at)}</div>${isOwner ? `<a href="#" data-act="rgunverify" data-id="${r.id}" style="font-size:11px">undo</a>` : ''}` : '<span class="badge b-dev">Unverified</span>') : '<span class="badge b-green">Verified in batch</span>'}</td>
+        <td class="mono" style="font-size:11px">${esc(r.req_no || '')}</td></tr>`).join('');
+  }).join('');
+  const chipRow = (rows, empty) => rows.length ? `<div class="tw"><table><tbody>${rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td class="r">${v.n}</td><td class="r amt"><b>${inr0(v.v)}</b></td></tr>`).join('')}</tbody></table></div>` : `<div class="mut">${empty}</div>`;
+  return `<div class="row" style="margin-bottom:10px"><h2>Payments register</h2><span class="sp"></span><button class="btn" data-act="rgcsv">Download CSV</button></div>
+  <div class="card"><div class="row" style="margin-bottom:10px"><div class="chips">${presets.map(([k, l]) => `<button class="chip ${g.preset === k ? 'on' : ''}" data-act="rgpreset" data-p="${k}">${l}</button>`).join('')}</div>
+      ${g.preset === 'custom' ? `<input type="date" data-act="rgdate" data-k="from" value="${esc(g.from || a)}" style="width:auto"> to <input type="date" data-act="rgdate" data-k="to" value="${esc(g.to || b)}" style="width:auto">` : `<span class="mut">${fdate(a)}${a !== b ? ' – ' + fdate(b) : ''}</span>`}</div>
+    <div class="row" style="margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <select data-act="rgsel" data-k="company" style="width:auto"><option value="">All companies</option>${COMPANIES.map(c => `<option ${g.company === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}<option value="__none" ${g.company === '__none' ? 'selected' : ''}>Company not tagged</option></select>
+      <select data-act="rgsel" data-k="project" style="width:auto"><option value="">All projects</option>${projs.map(([id, n]) => `<option value="${id}" ${g.project === id ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>
+      <select data-act="rgsel" data-k="cat" style="width:auto"><option value="">All categories</option>${Object.entries(CATS).map(([k, l]) => `<option value="${k}" ${g.cat === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>
+      <select data-act="rgsel" data-k="ver" style="width:auto"><option value="all" ${g.ver === 'all' ? 'selected' : ''}>Verified + unverified</option><option value="unverified" ${g.ver === 'unverified' ? 'selected' : ''}>Unverified only</option><option value="verified" ${g.ver === 'verified' ? 'selected' : ''}>Verified only</option></select>
+      <input id="rg-q" style="width:220px" placeholder="Search payee / UTR / ref" value="${esc(g.q)}" data-live="rgq"></div>
+    <div class="kpis" style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:12px">
+      <div><div class="mut">Payments</div><b style="font-size:18px">${L.length}</b></div>
+      <div><div class="mut">Net paid</div><b class="amt" style="font-size:18px">${inr0(net)}</b></div>
+      <div><div class="mut">TDS</div><b class="amt" style="font-size:18px">${inr0(tds)}</b></div>
+      <div><div class="mut">Gross</div><b class="amt" style="font-size:18px">${inr0(gross)}</b></div>
+      <div><div class="mut">Unverified</div><b style="font-size:18px" class="${unv.length ? 'bad' : ''}">${unv.length}${unv.length ? ' · ' + inr0(sum(unv, r => num(r.paid_amount))) : ''}</b></div></div>
+    ${isOwner && unv.length ? `<div class="row" style="margin-bottom:10px;gap:8px"><button class="btn p" data-act="rgverify">Verify selected (${[...g.sel].filter(id => unv.some(r => r.id === id)).length})</button><button class="btn" data-act="rgverifyall">Verify all ${unv.length} shown</button><label style="font-size:12px"><input type="checkbox" data-act="rgckall"> select all unverified</label></div>` : ''}
+    <div class="grid2"><div><h3 style="margin-bottom:6px">By company</h3>${chipRow(by(r => r.paying_company || 'Company not tagged'), 'No payments.')}</div><div><h3 style="margin-bottom:6px">By project</h3>${chipRow(by(r => r.project_name || '—'), 'No payments.')}</div></div></div>
+  <div class="card" style="margin-top:12px"><div class="tw"><table><thead><tr><th></th><th>Paid from company</th><th>Project</th><th>Payee</th><th class="r">Gross</th><th class="r">TDS</th><th class="r">Net paid</th><th>UTR</th><th>Entry</th><th>Verification</th><th>Req</th></tr></thead>
+    <tbody>${body || '<tr><td colspan="11" class="empty">No payments in this period.</td></tr>'}</tbody></table></div>
+    <p class="mut" style="font-size:12px;margin:8px 0 0">Payments entered as already-paid need to be verified by the Owner. Payments made through a batch are verified in the batch. Unverified payments still count in ledgers and project headroom.</p></div>`;
+}
 function vAudit() {
   const q = (S.ui.auditQ || '').toLowerCase();
   const L = S.audit.filter(a => !q || JSON.stringify([a.actor_name, a.entity, a.ref, a.action, a.detail]).toLowerCase().includes(q));
@@ -1460,6 +1527,25 @@ const ACT = {
       toast(`${payload.length} draft${payload.length > 1 ? 's' : ''} saved`); await refresh(); if (S.ui.gridOpen) gUpdate();
     });
   },
+  rgpreset(el) { RG().preset = el.dataset.p; RG().sel = new Set(); renderMain(); },
+  rgsel(el) { RG()[el.dataset.k] = el.value; RG().sel = new Set(); renderMain(); },
+  rgdate(el) { RG()[el.dataset.k] = el.value; renderMain(); },
+  rgck(el) { const s = RG().sel; el.checked ? s.add(el.dataset.id) : s.delete(el.dataset.id); renderMain(); },
+  rgckall(el) { const g = RG(); g.sel = el.checked ? new Set(rgRows().filter(rgNeedsVerify).map(r => r.id)) : new Set(); renderMain(); },
+  async rgverifyIds(ids, verify) {
+    if (!ids.length) return toast('Nothing selected', true);
+    await guard(async () => { const r = await rpc('pay_verify_entries', { p_ids: ids, p_verify: verify }); RG().sel = new Set(); toast(verify ? `${r.count} payment(s) verified` : 'Verification removed'); await refresh(); });
+  },
+  rgverify() { const un = new Set(rgRows().filter(rgNeedsVerify).map(r => r.id)); ACT.rgverifyIds([...RG().sel].filter(id => un.has(id)), true); },
+  rgverifyall() { ACT.rgverifyIds(rgRows().filter(rgNeedsVerify).map(r => r.id), true); },
+  rgverifyday(el) { ACT.rgverifyIds(rgRows().filter(r => rgNeedsVerify(r) && r.paid_date === el.dataset.d).map(r => r.id), true); },
+  rgunverify(el, e) { if (e) e.preventDefault(); ACT.rgverifyIds([el.dataset.id], false); },
+  rgcsv() {
+    const { a, b } = rgRange(), q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+    const rows = [['Date paid', 'Paid from company', 'Project', 'Payee', 'Category', 'Bill ref / note', 'Gross', 'TDS', 'Net paid', 'UTR', 'Entry', 'Verified', 'Verified on', 'Req no']];
+    rgRows().forEach(r => rows.push([r.paid_date, r.paying_company || '', r.project_name || '', r.payee_name || '', CATS[r.category] || '', r.bill_ref || '', rgGross(r), rgGross(r) - num(r.paid_amount), num(r.paid_amount), r.utr || '', r.is_backfill ? 'Past entry' : 'Batch', r.is_backfill ? (r.entry_verified_at ? 'Yes' : 'No') : 'Yes (batch)', r.entry_verified_at ? String(r.entry_verified_at).slice(0, 10) : '', r.req_no || '']));
+    download(`payments_register_${a}_to_${b}.csv`, '﻿' + rows.map(r => r.map(q).join(',')).join('\n'), 'text/csv');
+  },
   async setco(el) {
     await guard(async () => { await rpc('pay_set_company', { p_id: el.dataset.id, p_company: $('#dt-co').value || null }); toast('Paying company saved'); await refresh(); });
   },
@@ -1600,7 +1686,7 @@ document.addEventListener('scroll', () => { if (PC.el) pcPlace(); }, true);
 
 document.addEventListener('change', e => {
   const el = e.target.closest('[data-act]'); if (!el) return; const a = el.dataset.act;
-  if (['selreq', 'setplan', 'csel', 'cselall', 'selalldraft', 'selbatch', 'selallbatch', 'selrm', 'devok', 'pdec', 'fproject', 'stmt', 'gridxlsx', 'autoparam', 'autosel', 'autoproj', 'autopayee'].includes(a) && ACT[a]) ACT[a](el, e);
+  if (['selreq', 'setplan', 'csel', 'cselall', 'selalldraft', 'selbatch', 'selallbatch', 'selrm', 'devok', 'pdec', 'fproject', 'rgsel', 'rgdate', 'rgck', 'rgckall', 'stmt', 'gridxlsx', 'autoparam', 'autosel', 'autoproj', 'autopayee'].includes(a) && ACT[a]) ACT[a](el, e);
 });
 document.addEventListener('input', e => {
   const el = e.target; const l = el.dataset && el.dataset.live; if (!l) return; const id = el.dataset.id;
@@ -1612,6 +1698,7 @@ document.addEventListener('input', e => {
   else if (l === 'rabill') refreshLedgerHint();
   else if (l === 'fq') { S.ui.q = el.value; const pos = el.selectionStart; renderMain(); const n = $('#f-q'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } }
   else if (l === 'payeeq') { S.ui.payeeQ = el.value; const pos = el.selectionStart; renderMain(); const n = $('#pq'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } }
+  else if (l === 'rgq') { RG().q = el.value; const pos = el.selectionStart; renderMain(); const n = $('#rg-q'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } }
   else if (l === 'auditq') { S.ui.auditQ = el.value; const pos = el.selectionStart; renderMain(); const n = $('#aq'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } }
   else if (l === 'bpay') { S.ui.bpay[id] = el.value; updBpay(); }
   else if (l === 'camt') S.ui.camt[id] = el.value;
