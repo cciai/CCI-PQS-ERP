@@ -177,6 +177,18 @@ const badge = s => `<span class="badge b-${esc(s)}">${esc(STATUS_LABEL[s] || s)}
 const DEV_REASONS = { client_inflow_delayed: 'Client inflow delayed', statutory_due: 'Statutory dues (GST/PF/ESI/TDS)', wages_critical: 'Labour wages critical', material_critical: 'Material critical for progress', advance_to_secure: 'Advance to secure rate/supply', other: 'Other (explain)' };
 const COMPANIES = ['Cameo','CCI Urban','CCI Projects','CCI Contracting Services','CCI Contracts','CCI Technical Services','CCI Engineering Services'];
 const coOpts = (cur, ph) => `<option value="">${ph || 'Select company…'}</option>` + COMPANIES.map(c => `<option ${cur === c ? 'selected' : ''}>${esc(c)}</option>`).join('');
+const headOf = id => (S.heads || []).find(h => h.id === id);
+const catLabel = r => { const h = r && headOf(r.ledger_head_id); return h ? h.name : (CATS[r && r.category] || (r && r.category) || ''); };
+function headOpts(selId, blank) {
+  const act = (S.heads || []).filter(h => h.is_active || h.id === selId); const groups = [];
+  act.forEach(h => { let g = groups.find(x => x.n === h.grp); if (!g) { g = { n: h.grp, l: [] }; groups.push(g); } g.l.push(h); });
+  return (blank ? `<option value="">${blank}</option>` : '') + groups.map(g => `<optgroup label="${esc(g.n)}">${g.l.map(h => `<option value="${h.id}" ${h.id === selId ? 'selected' : ''}>${esc(h.name)}</option>`).join('')}</optgroup>`).join('');
+}
+function headFind(v) {
+  v = (v || '').trim().toLowerCase(); if (!v) return null; const hs = (S.heads || []).filter(h => h.is_active);
+  return hs.find(h => h.name.toLowerCase() === v) || hs.find(h => h.id === v) || hs.find(h => h.name.toLowerCase().startsWith(v)) || hs.find(h => h.name.toLowerCase().includes(v))
+    || hs.find(h => h.is_default && (h.category === v || (CATS[h.category] || '').toLowerCase() === v)) || null;
+}
 const CATS = { labour: 'Labour', material: 'Material', subcontract: 'Subcontract', equipment: 'Equipment / rental', statutory: 'Statutory', overhead: 'Overhead', other: 'Other' };
 
 /* ---------- state ---------- */
@@ -258,19 +270,21 @@ function showNoAccess(email) {
 async function loadAll() {
   Object.keys(LG).forEach(k => delete LG[k]);
   const r = realRole();
-  const [banks, settings, pos, reqs, batches] = await Promise.all([
+  const [banks, settings, pos, reqs, batches, heads] = await Promise.all([
     qry(sb.from('pay_bank_accounts').select('*').order('code')),
     qry(sb.from('pay_settings').select('*')),
     rpc('pay_project_position'),
     qry(sb.from('pay_requests').select('*').order('created_at', { ascending: false }).limit(3000)),
-    qry(sb.from('pay_batches').select('*').order('created_at', { ascending: false }).limit(500))
+    qry(sb.from('pay_batches').select('*').order('created_at', { ascending: false }).limit(500)),
+    qry(sb.from('pay_ledger_heads').select('*').order('sort').order('name'))
   ]);
+  S.heads = heads;
   S.banks = banks; S.settings = Object.fromEntries(settings.map(s => [s.key, s.value]));
   S.pos = pos; S.reqs = reqs; S.batches = batches;
   if (r === 'owner' || r === 'accounts') {
     const [payees, projects, receipts, adjustments, openings] = await Promise.all([
       qry(sb.from('pay_payees').select('*').order('name').limit(5000)),
-      qry(sb.from('ra_projects').select('id,name,client_name').is('deleted_at', null).order('name')),
+      qry(sb.from('ra_projects').select('id,name,client_name,is_overhead').is('deleted_at', null).order('name')),
       qry(sb.from('ra_client_receipts').select('*').order('receipt_date', { ascending: false }).limit(60)),
       qry(sb.from('pay_adjustments').select('*').order('created_at', { ascending: false }).limit(60)),
       qry(sb.from('pay_project_opening').select('*'))
@@ -289,8 +303,8 @@ function tabsFor() {
     batch: S.reqs.filter(r => r.status === 'approved').length
   };
   const T = {
-    owner: [['dash', 'Dashboard'], ['reqs', 'Requests'], ['register', 'Payments register'], ['appr', 'CEO queue', n.ceo], ['batches', 'Batches', n.batch], ['inflow', 'Inflows & limits'], ['auto', 'Auto payment sheet'], ['payees', 'Payees'], ['audit', 'Audit'], ['admin', 'Admin']],
-    accounts: [['dash', 'Dashboard'], ['reqs', 'Requests'], ['register', 'Payments register'], ['batches', 'Batches', n.batch], ['inflow', 'Inflows'], ['auto', 'Auto payment sheet'], ['payees', 'Payees'], ['audit', 'Audit']],
+    owner: [['dash', 'Dashboard'], ['reqs', 'Requests'], ['register', 'Payments register'], ['heads', 'Ledger heads'], ['appr', 'CEO queue', n.ceo], ['batches', 'Batches', n.batch], ['inflow', 'Inflows & limits'], ['auto', 'Auto payment sheet'], ['payees', 'Payees'], ['audit', 'Audit'], ['admin', 'Admin']],
+    accounts: [['dash', 'Dashboard'], ['reqs', 'Requests'], ['register', 'Payments register'], ['heads', 'Ledger heads'], ['batches', 'Batches', n.batch], ['inflow', 'Inflows'], ['auto', 'Auto payment sheet'], ['payees', 'Payees'], ['audit', 'Audit']],
     ceo: [['appr', 'Approvals', n.ceo], ['dash', 'Dashboard']],
     partner: [['verify', 'Verify batches', n.partner], ['dash', 'Dashboard']]
   };
@@ -310,10 +324,10 @@ function renderShell() {
 }
 async function renderMain() {
   const m = $('#main'); if (!m) return;
-  const V = { dash: vDash, reqs: vReqs, appr: vAppr, batches: vBatches, inflow: vInflow, payees: vPayees, audit: vAudit, admin: vAdmin, verify: vVerify, auto: vAuto, register: vRegister };
+  const V = { dash: vDash, reqs: vReqs, appr: vAppr, batches: vBatches, inflow: vInflow, payees: vPayees, audit: vAudit, admin: vAdmin, verify: vVerify, auto: vAuto, register: vRegister, heads: vHeads };
   if (S.tab === 'auto' && !A().loaded && !A().loading) { setTimeout(autoLoad, 0); }
   if (S.tab === 'audit' && !S.audit.length) { await guard(async () => { S.audit = await qry(sb.from('pay_audit').select('*').order('at', { ascending: false }).limit(500)); }); }
-  if (S.tab === 'register' && !['owner', 'accounts'].includes(role())) S.tab = defaultTab();
+  if ((S.tab === 'register' || S.tab === 'heads') && !['owner', 'accounts'].includes(role())) S.tab = defaultTab();
   m.innerHTML = (V[S.tab] || vDash)();
   if (S.tab === 'reqs' && S.ui.gridOpen) gUpdate();
 }
@@ -352,13 +366,13 @@ function vDash() {
     return { b, live: sum(l, r => r.shortfall_at_approval), paid: sum(p, r => r.shortfall_at_approval), n: l.length + p.length };
   }).filter(x => x.n);
   const unasg = devLive.filter(r => !r.dev_funding_account_id); if (unasg.length) devByBank.push({ b: { label: 'Not yet assigned (chosen on the payment sheet)' }, live: sum(unasg, r => r.shortfall_at_approval), paid: 0, n: unasg.length });
-  const posRows = S.pos.map(p => `<tr><td><b>${esc(p.project_name)}</b><div class="mut" style="font-size:12px">${esc(p.client_name || '')}</div></td>
+  const posRows = S.pos.filter(p => num(p.headroom) < 1e11).map(p => `<tr><td><b>${esc(p.project_name)}</b><div class="mut" style="font-size:12px">${esc(p.client_name || '')}</div></td>
     <td class="r amt">${inr0(p.opening_net)}</td><td class="r amt">${inr0(p.adjustments)}</td><td class="r amt good">${inr0(p.receipts)}</td>
     <td class="r amt">${inr0(p.paid)}</td><td class="r amt">${inr0(p.committed)}</td>
     <td class="r amt ${headClass(p.headroom)}" style="font-size:15px"><b>${inr0(p.headroom)}</b></td>
     <td>${num(p.headroom) < 0 ? '<span class="badge b-dev">Deviation zone</span>' : (num(p.headroom) === 0 ? '<span class="badge b-warn">Nil headroom</span>' : '<span class="badge b-green">Within inflow</span>')}</td></tr>`).join('');
   const ym = todayISO().slice(0, 7);
-  const recT = sum(S.pos, p => p.receipts), paidT = sum(S.pos, p => p.paid);
+  const recT = sum(S.pos.filter(p => num(p.headroom) < 1e11), p => p.receipts), paidT = sum(S.pos.filter(p => num(p.headroom) < 1e11), p => p.paid);
   const inSheets = sum(R.filter(r => ['batched', 'verified', 'released'].includes(r.status)), r => r.approved_amount);
   const paidM = sum(R.filter(r => r.status === 'paid' && (r.paid_date || '').slice(0, 7) === ym), r => r.paid_amount != null ? r.paid_amount : r.approved_amount);
   const recM = S.receipts ? sum(S.receipts.filter(x => (x.receipt_date || '').slice(0, 7) === ym), x => x.amount) : null;
@@ -392,7 +406,7 @@ function vReqs() {
     return `<tr>
       <td>${r.status === 'draft' && canSubmit() ? `<input type="checkbox" data-act="selreq" data-id="${r.id}" ${f.sel.has(r.id) ? 'checked' : ''}>` : ''}</td>
       <td class="mono"><a href="#" data-act="detail" data-id="${r.id}">${esc(r.req_no)}</a></td>
-      <td>${esc(r.project_name)}</td><td><b>${esc(r.payee_name)}</b><div class="mut" style="font-size:12px">${esc(CATS[r.category] || r.category)}${r.bill_ref ? ' · ' + esc(r.bill_ref) : ''}${r.paying_company ? ' · <b>' + esc(r.paying_company) + '</b>' : ''}</div></td>
+      <td>${esc(r.project_name)}</td><td><b>${esc(r.payee_name)}</b><div class="mut" style="font-size:12px">${esc(catLabel(r))}${r.bill_ref ? ' · ' + esc(r.bill_ref) : ''}${r.paying_company ? ' · <b>' + esc(r.paying_company) + '</b>' : ''}</div></td>
       <td class="r amt">${inr(r.gross_amount)}</td><td class="r amt">${num(r.tds_amount) ? inr(r.tds_amount) : '—'}</td><td class="r amt"><b>${inr(r.net_amount)}</b>${r.approved_amount && num(r.approved_amount) !== num(r.net_amount) ? `<div class="bad" style="font-size:11px">approved ${inr(r.approved_amount)}</div>` : ''}</td>
       <td>${gate}${r.priority === 'urgent' ? ' <span class="badge b-warn">Urgent</span>' : ''}</td>
       <td>${badge(r.status)}${r.is_backfill ? ' <span class="badge b-open">Past entry</span>' : ''}${r.ceo_remark && ['draft', 'rejected'].includes(r.status) ? `<div class="bad" style="font-size:11px;max-width:200px">CEO: ${esc(r.ceo_remark)}</div>` : ''}${r.fail_note && r.status === 'approved' ? `<div class="bad" style="font-size:11px">Bank: ${esc(r.fail_note)}</div>` : ''}${r.partner_status === 'returned' && r.status === 'approved' ? `<div class="bad" style="font-size:11px">Partner office: ${esc(r.partner_remark)}</div>` : ''}</td>
@@ -416,7 +430,7 @@ function vReqs() {
 
 /* ---------- Excel-style quick entry ---------- */
 const GCOLS = ['p', 'y', 'c', 'bill', 'g', 't', 'd', 'pr', 'co'];
-const gBlank = () => ({ p: '', y: '', c: 'labour', bill: '', g: '', t: '', d: '', pr: 'normal', co: '', dr: 'client_inflow_delayed', ds: '' });
+const gBlank = () => ({ p: '', y: '', c: '', bill: '', g: '', t: '', d: '', pr: 'normal', co: '', dr: 'client_inflow_delayed', ds: '' });
 function gRows() { if (!S.ui.grid) S.ui.grid = Array.from({ length: 8 }, gBlank); return S.ui.grid; }
 function gPayeeMap() { return payeeLabelMap(); }
 function gPayeeId(label, labels) {
@@ -433,6 +447,7 @@ function gCalc() {
     if (!r.p) { o.msg = 'Select project'; return o; }
     if (!o.payee) { o.msg = r.y ? 'Payee not in list' : 'Pick payee'; return o; }
     if (num(r.g) <= 0 || net <= 0) { o.msg = 'Check amount'; return o; }
+    if (!r.c || !headOf(r.c)) { o.msg = 'Select ledger head'; return o; }
     if (!r.co) { o.msg = 'Select paying company'; return o; }
     { const py = payeeOf(o.payee);
       if (py && py.subcontractor_id) {
@@ -459,7 +474,7 @@ function gBodyHtml() {
     <td class="mut">${i + 1}</td>
     <td>${sel(i, 'p', S.projects.map(p => [p.id, p.name]), r.p, 'Project…')}</td>
     <td>${inp(i, 'y', 'text', r.y, 190).replace('<input ', '<input data-pc="g" autocomplete="off" placeholder="Pick or type payee…" ')}</td>
-    <td>${sel(i, 'c', Object.entries(CATS), r.c)}</td>
+    <td><select data-live="g" data-r="${i}" data-c="c">${headOpts(r.c, 'Ledger head…')}</select></td>
     <td>${sel(i, 'bill', [['Advance', 'Advance'], ['Against RA', 'Against RA']].concat(r.bill && !['Advance', 'Against RA'].includes(r.bill) ? [[r.bill, r.bill]] : []), r.bill, 'Bill ref…')}</td>
     <td>${inp(i, 'g', 'number', r.g, 100)}</td><td>${inp(i, 't', 'number', r.t, 80)}</td>
     <td class="r amt" id="g-net-${i}">—</td>
@@ -473,8 +488,8 @@ function gBodyHtml() {
 function vGrid() {
   return `<div class="card" style="margin-bottom:14px"><div class="row" style="margin-bottom:8px"><h3 style="margin:0">Excel-style entry</h3><span class="sp"></span>
     <label class="btn s">⬆ Upload Excel <input type="file" accept=".xlsx,.xls,.csv" data-act="gridxlsx" style="display:none"></label><button class="btn s" data-act="gridtemplate">⬇ Template</button><button class="btn s" data-act="gridadd">+ 5 rows</button><button class="btn s" data-act="gridclear">Clear</button><button class="btn p" data-act="gridsave">Save all as drafts</button></div>
-    <p class="mut" style="font-size:12.5px;margin:0 0 8px">Type row by row, or <b>copy rows from Excel and paste into any cell</b> — columns in this order: Project, Payee, Category, Bill ref (Advance / Against RA), Gross, TDS, Due date, Priority, Paying company. Each row shows an inflow check. Deviation rows need a reason and a fund-from account. Rows are saved as drafts; you then submit them to the CEO.</p>
-    <div class="tw"><table class="gtbl"><thead><tr><th>#</th><th>Project</th><th>Payee</th><th>Category</th><th>Bill ref</th><th class="r">Gross ₹</th><th class="r">TDS ₹</th><th class="r">Net ₹</th><th>Due</th><th>Priority</th><th>Paying company</th><th>Check</th><th>Deviation reason</th><th></th></tr></thead>
+    <p class="mut" style="font-size:12.5px;margin:0 0 8px">Type row by row, or <b>copy rows from Excel and paste into any cell</b> — columns in this order: Project, Payee, Ledger head, Bill ref (Advance / Against RA), Gross, TDS, Due date, Priority, Paying company. Each row shows an inflow check. Deviation rows need a reason and a fund-from account. Rows are saved as drafts; you then submit them to the CEO.</p>
+    <div class="tw"><table class="gtbl"><thead><tr><th>#</th><th>Project</th><th>Payee</th><th>Ledger head</th><th>Bill ref</th><th class="r">Gross ₹</th><th class="r">TDS ₹</th><th class="r">Net ₹</th><th>Due</th><th>Priority</th><th>Paying company</th><th>Check</th><th>Deviation reason</th><th></th></tr></thead>
     <tbody id="grid-body">${gBodyHtml()}</tbody></table></div>
     <div class="row" style="margin-top:8px"><span id="g-sum" class="mut"></span></div></div>`;
 }
@@ -510,7 +525,7 @@ function gPaste(el, text) {
     line.split('\t').forEach((cell, ci) => {
       const col = GCOLS[c0 + ci]; if (!col) return; const v = cell.trim();
       if (col === 'p') { const pr = S.projects.find(x => x.name.toLowerCase() === v.toLowerCase()) || S.projects.find(x => v && x.name.toLowerCase().includes(v.toLowerCase())); row.p = pr ? pr.id : ''; }
-      else if (col === 'c') { const k = Object.entries(CATS).find(([k2, l]) => k2 === v.toLowerCase() || l.toLowerCase().startsWith(v.toLowerCase()) && v); row.c = k ? k[0] : row.c; }
+      else if (col === 'c') { const h = headFind(v); row.c = h ? h.id : row.c; }
       else if (col === 'g' || col === 't') row[col] = v.replace(/[₹,\s]/g, '');
       else if (col === 'd') row.d = gParseDate(v);
       else if (col === 'co') { const k = COMPANIES.find(x => x.toLowerCase() === v.toLowerCase()) || COMPANIES.slice().sort((a, b) => b.length - a.length).find(x => v && x.toLowerCase().includes(v.toLowerCase())) || (v && COMPANIES.find(x => x.toLowerCase().includes(v.toLowerCase()))); row.co = k || ''; }
@@ -641,7 +656,7 @@ function reqFormHtml(r) {
   return `<div class="ovl" data-act="ovl"><div class="modal">
     <h2>${r.id ? 'Edit request ' + esc(r.req_no) : 'New payment request'}</h2>
     <div class="grid2"><div class="field"><label>Project</label><select id="rf-project" data-live="gate"><option value="">Select…</option>${S.projects.map(p => `<option value="${p.id}" ${r.project_id === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div>
-      <div class="field"><label>Category</label><select id="rf-cat">${Object.entries(CATS).map(([k, v]) => `<option value="${k}" ${(r.category || 'labour') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div></div>
+      <div class="field"><label>Ledger head <span style="text-transform:none;letter-spacing:0;font-weight:500">— where this goes in the books</span></label><select id="rf-head" data-live="gate">${headOpts(r.ledger_head_id, 'Select ledger head…')}</select></div></div>
     <div class="field"><label>Payee <span style="text-transform:none;letter-spacing:0;font-weight:500">— starred ★ shown first; type to find any supplier or subcontractor</span></label><input id="rf-payee" data-live="payee" data-pc="rf" autocomplete="off" value="${esc(curLabel)}" placeholder="Pick from the list, or type any name…">
       <div class="mut" style="font-size:12px;margin-top:3px">Not listed? Add the vendor under <b>Payees</b> first (bank account + IFSC are needed for the bank file).</div></div>
     <div class="field"><label>Paying company <span style="text-transform:none;letter-spacing:0;font-weight:500">— which CCI entity pays this</span></label><select id="rf-company">${coOpts(r.paying_company)}</select></div>
@@ -670,6 +685,8 @@ function updateGate() {
   const pid = $('#rf-project').value, id = $('#modal-root [data-act="savereq"]').dataset.id || null;
   const net = num($('#rf-gross').value) - num($('#rf-tds').value) - num($('#rf-oth').value);
   if (!pid) { g.innerHTML = '<div class="gate" style="background:#F2EFE8">Select a project to see the client-inflow check.</div>'; $('#rf-dev').style.display = 'none'; return; }
+  const pj = S.projects.find(x => x.id === pid);
+  if (pj && pj.is_overhead) { g.innerHTML = '<div class="gate ok"><b>Head Office / Admin cost centre</b> — no client-inflow check applies. Still goes through CEO approval.</div>'; $('#rf-dev').style.display = 'none'; return; }
   const p = posOf(pid) || {}; const head = num(p.headroom) - pendingNet(pid, id);
   const short = Math.max(net - Math.max(head, 0), 0);
   g.innerHTML = short > 0
@@ -703,7 +720,7 @@ function ceoCard(x) {
       <div class="row"><button class="btn ${pn.mode === 'approve' ? 'g' : pn.mode === 'reject' ? 'd' : 'a'}" data-act="ceoconfirm" data-id="${r.id}">Confirm ${pn.mode}</button><button class="btn" data-act="ceopanel" data-id="${r.id}" data-m="">Back</button></div></div>` : '';
   return `<div class="card ${dev ? 'dev' : 'ok'}">
     <div class="row"><div><div class="mono" style="font-size:12px" >${esc(r.req_no)} ${r.priority === 'urgent' ? '<span class="badge b-warn">Urgent</span>' : ''}</div><div style="font-size:16px"><b>${esc(r.payee_name)}</b></div>
-      <div class="mut">${esc(CATS[r.category])}${r.bill_ref ? ' · Bill ' + esc(r.bill_ref) : ''}${r.due_date ? ' · due ' + fdate(r.due_date) : ''}</div>${r.description ? `<div style="margin-top:3px">${esc(r.description)}</div>` : ''}</div>
+      <div class="mut">${esc(catLabel(r))}${r.bill_ref ? ' · Bill ' + esc(r.bill_ref) : ''}${r.due_date ? ' · due ' + fdate(r.due_date) : ''}</div>${r.description ? `<div style="margin-top:3px">${esc(r.description)}</div>` : ''}</div>
       <span class="sp"></span><div style="text-align:right"><div class="big amt">${inr(r.net_amount)}</div><div class="mut" style="font-size:12px">Gross ${inr(r.gross_amount)}${num(r.tds_amount) ? ' · TDS ' + inr(r.tds_amount) : ''}${num(r.other_deduction) ? ' · other ' + inr(r.other_deduction) : ''}</div></div></div>
     ${dev ? `<div class="gate dev"><b>DEVIATION — ${inr(x.shortfall)} above client inflow.</b> Headroom before this line: ${inr(Math.max(x.head, 0))}.<br>Reason: ${esc(DEV_REASONS[r.dev_reason_code] || '—')} · Funding: ${esc(bank ? bank.label : '—')}${r.dev_expected_inflow_date ? ` · Expected inflow ${fdate(r.dev_expected_inflow_date)}${r.dev_expected_inflow_amount ? ' (' + inr0(r.dev_expected_inflow_amount) + ')' : ''}` : ''}${r.dev_note ? `<br>Note: ${esc(r.dev_note)}` : ''}</div>`
       : `<div class="gate ok">Within client inflow — headroom before this line ${inr(x.head)}.</div>`}
@@ -727,7 +744,7 @@ function vAppr() {
         return `<tr class="${dev ? 'dv' : ''}">
           ${isCeo ? `<td><input type="checkbox" data-act="csel" data-id="${r.id}" ${S.ui.csel.has(r.id) ? 'checked' : ''}></td>` : ''}
           <td class="mono"><a href="#" data-act="detail" data-id="${r.id}">${esc(r.req_no)}</a>${r.priority === 'urgent' ? ' <span class="badge b-warn">Urgent</span>' : ''}</td>
-          <td class="wr"><b>${esc(r.payee_name)}</b> <span class="mut" style="font-size:12px">${esc(CATS[r.category] || r.category)}${r.bill_ref ? ' · ' + esc(r.bill_ref) : ''}</span>${r.description ? `<div class="mut" style="font-size:11.5px">${esc(r.description)}</div>` : ''}</td>
+          <td class="wr"><b>${esc(r.payee_name)}</b> <span class="mut" style="font-size:12px">${esc(catLabel(r))}${r.bill_ref ? ' · ' + esc(r.bill_ref) : ''}</span>${r.description ? `<div class="mut" style="font-size:11.5px">${esc(r.description)}</div>` : ''}</td>
           <td>${r.due_date ? fdate(r.due_date) : ''}</td>
           <td class="r amt">${inr(r.gross_amount)}</td><td class="r amt">${num(r.tds_amount) ? inr(r.tds_amount) : '—'}</td><td class="r amt"><b>${inr(r.net_amount)}</b></td>
           ${isCeo ? `<td class="r"><input class="ci" type="number" step="0.01" min="0" data-live="camt" data-id="${r.id}" value="${esc(S.ui.camt[r.id] !== undefined ? S.ui.camt[r.id] : r.net_amount)}" title="Approve a lower amount for a part payment"></td>` : ''}
@@ -859,7 +876,7 @@ function vVerify() {
       const d = S.ui.pdec[r.id] || {}; const bankChg = r.payee_bank_changed_at && daysSince(r.payee_bank_changed_at) < 30;
       return `<div class="card ${r.is_deviation ? 'dev' : (bankChg ? 'flag' : '')}" style="margin-bottom:10px">
         <div class="row"><div><div class="mono" style="font-size:12px">${esc(r.req_no)} · ${esc(r.project_name)}</div><div style="font-size:16px"><b>${esc(r.payee_name)}</b></div>
-          <div class="mut">${esc(CATS[r.category])}${r.bill_ref ? ' · Bill ' + esc(r.bill_ref) : ''}</div>${r.description ? `<div>${esc(r.description)}</div>` : ''}</div>
+          <div class="mut">${esc(catLabel(r))}${r.bill_ref ? ' · Bill ' + esc(r.bill_ref) : ''}</div>${r.description ? `<div>${esc(r.description)}</div>` : ''}</div>
           <span class="sp"></span><div style="text-align:right"><div class="big amt">${inr(r.approved_amount)}</div>${num(r.approved_amount) !== num(r.net_amount) ? `<div class="bad" style="font-size:12px">CEO reduced from ${inr(r.net_amount)}</div>` : ''}</div></div>
         <div style="margin:8px 0;font-size:12.5px"><span class="badge b-approved">CEO approved ${fdt(r.ceo_at)}</span>${r.parent_id ? ` <span class="badge b-open">Part payment — CEO approved ${inr(r.orig_approved)}</span>` : ''}${r.ceo_remark ? ` <span class="mut">“${esc(r.ceo_remark)}”</span>` : ''}
           ${r.is_deviation ? `<div class="gate dev" style="margin:8px 0 0"><b>Deviation</b> — ${inr(r.shortfall_at_approval)} above client inflow, approved by CEO. ${bankOf(r.dev_funding_account_id) ? 'Funded from ' + esc(bankOf(r.dev_funding_account_id).label) + '. ' : ''}${esc(DEV_REASONS[r.dev_reason_code] || '')}${r.dev_expected_inflow_date ? ' · expected inflow ' + fdate(r.dev_expected_inflow_date) : ''}${r.dev_note ? ' · ' + esc(r.dev_note) : ''}</div>` : '<span class="badge b-green">Within client inflow</span>'}
@@ -907,7 +924,7 @@ function vInflow() {
     <p class="mut" style="font-size:12.5px;margin:0 0 8px">For outflows already made, so each project's headroom is correct. These skip the approval flow, are marked <b>Past entry</b> and are logged. Payments dated before a project's opening-position date are already inside that opening figure and are not counted again.</p>
     <div class="grid3"><div class="field"><label>Project</label><select id="pp-project"><option value="">Select…</option>${proj.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div>
       <div class="field"><label>Payee (pick, or type a name)</label><input id="pp-payee" data-pc="pp" autocomplete="off" placeholder="Pick or type a name…"></div>
-      <div class="field"><label>Category</label><select id="pp-cat">${Object.entries(CATS).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('')}</select></div></div>
+      <div class="field"><label>Ledger head</label><select id="pp-head">${headOpts(null, 'Select ledger head…')}</select></div></div>
     <div class="grid3"><div class="field"><label>Gross amount (₹)</label><input id="pp-gross" type="number" step="0.01" min="0"></div>
       <div class="field"><label>TDS (₹)</label><input id="pp-tds" type="number" step="0.01" min="0" value="0"></div>
       <div class="field"><label>Date paid</label><input id="pp-date" type="date" value="${todayISO()}" max="${todayISO()}"></div></div>
@@ -1062,7 +1079,7 @@ function rgRows() {
   const g = RG(), { a, b } = rgRange(), q = g.q.toLowerCase();
   return S.reqs.filter(r => r.status === 'paid' && r.paid_date && r.paid_date >= a && r.paid_date <= b
     && (!g.company || (g.company === '__none' ? !r.paying_company : r.paying_company === g.company))
-    && (!g.project || r.project_id === g.project) && (!g.cat || r.category === g.cat)
+    && (!g.project || r.project_id === g.project) && (!g.cat || r.ledger_head_id === g.cat)
     && (g.ver === 'all' || (g.ver === 'unverified' ? rgNeedsVerify(r) : !rgNeedsVerify(r)))
     && (!q || (r.payee_name + ' ' + (r.utr || '') + ' ' + (r.bill_ref || '') + ' ' + (r.description || '') + ' ' + (r.req_no || '')).toLowerCase().includes(q)))
     .sort((x, y) => (y.paid_date > x.paid_date ? 1 : y.paid_date < x.paid_date ? -1 : String(y.paid_at || '').localeCompare(String(x.paid_at || ''))));
@@ -1078,7 +1095,7 @@ function vRegister() {
     const rs = days[d], dn = sum(rs, r => num(r.paid_amount)), dun = rs.filter(rgNeedsVerify);
     return `<tr class="tot"><td colspan="3"><b>${fdate(d)}</b> · ${rs.length} payment${rs.length > 1 ? 's' : ''}${dun.length ? ` · <span class="bad">${dun.length} unverified</span>` : ''}</td><td colspan="5" class="r amt">Day total (net) <b>${inr0(dn)}</b></td><td colspan="3" class="r">${isOwner && dun.length ? `<button class="btn s" data-act="rgverifyday" data-d="${d}">Verify this day</button>` : ''}</td></tr>`
       + rs.map(r => `<tr><td>${isOwner && rgNeedsVerify(r) ? `<input type="checkbox" data-act="rgck" data-id="${r.id}" ${g.sel.has(r.id) ? 'checked' : ''}>` : ''}</td>
-        <td>${esc(r.paying_company || '—')}</td><td>${esc(r.project_name || '')}</td><td>${esc(r.payee_name || '')}<div class="mut" style="font-size:11px">${esc(CATS[r.category] || '')}${r.bill_ref ? ' · ' + esc(r.bill_ref) : ''}</div></td>
+        <td>${esc(r.paying_company || '—')}</td><td>${esc(r.project_name || '')}</td><td>${esc(r.payee_name || '')}<div class="mut" style="font-size:11px">${esc(catLabel(r))}${r.bill_ref ? ' · ' + esc(r.bill_ref) : ''}</div></td>
         <td class="r amt">${inr0(rgGross(r))}</td><td class="r amt">${inr0(rgGross(r) - num(r.paid_amount))}</td><td class="r amt"><b>${inr0(r.paid_amount)}</b></td>
         <td class="mono" style="font-size:12px">${esc(r.utr || '')}</td><td>${r.is_backfill ? '<span class="badge b-open">Past entry</span>' : '<span class="badge b-green">Batch</span>'}</td>
         <td>${r.is_backfill ? (r.entry_verified_at ? `<span class="badge b-green">Verified</span><div class="mut" style="font-size:11px">${fdt(r.entry_verified_at)}</div>${isOwner ? `<a href="#" data-act="rgunverify" data-id="${r.id}" style="font-size:11px">undo</a>` : ''}` : '<span class="badge b-dev">Unverified</span>') : '<span class="badge b-green">Verified in batch</span>'}</td>
@@ -1091,7 +1108,7 @@ function vRegister() {
     <div class="row" style="margin-bottom:10px;flex-wrap:wrap;gap:8px">
       <select data-act="rgsel" data-k="company" style="width:auto"><option value="">All companies</option>${COMPANIES.map(c => `<option ${g.company === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}<option value="__none" ${g.company === '__none' ? 'selected' : ''}>Company not tagged</option></select>
       <select data-act="rgsel" data-k="project" style="width:auto"><option value="">All projects</option>${projs.map(([id, n]) => `<option value="${id}" ${g.project === id ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>
-      <select data-act="rgsel" data-k="cat" style="width:auto"><option value="">All categories</option>${Object.entries(CATS).map(([k, l]) => `<option value="${k}" ${g.cat === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>
+      <select data-act="rgsel" data-k="cat" style="width:auto">${headOpts(g.cat, 'All ledger heads')}</select>
       <select data-act="rgsel" data-k="ver" style="width:auto"><option value="all" ${g.ver === 'all' ? 'selected' : ''}>Verified + unverified</option><option value="unverified" ${g.ver === 'unverified' ? 'selected' : ''}>Unverified only</option><option value="verified" ${g.ver === 'verified' ? 'selected' : ''}>Verified only</option></select>
       <input id="rg-q" style="width:220px" placeholder="Search payee / UTR / ref" value="${esc(g.q)}" data-live="rgq"></div>
     <div class="kpis" style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:12px">
@@ -1101,10 +1118,33 @@ function vRegister() {
       <div><div class="mut">Gross</div><b class="amt" style="font-size:18px">${inr0(gross)}</b></div>
       <div><div class="mut">Unverified</div><b style="font-size:18px" class="${unv.length ? 'bad' : ''}">${unv.length}${unv.length ? ' · ' + inr0(sum(unv, r => num(r.paid_amount))) : ''}</b></div></div>
     ${isOwner && unv.length ? `<div class="row" style="margin-bottom:10px;gap:8px"><button class="btn p" data-act="rgverify">Verify selected (${[...g.sel].filter(id => unv.some(r => r.id === id)).length})</button><button class="btn" data-act="rgverifyall">Verify all ${unv.length} shown</button><label style="font-size:12px"><input type="checkbox" data-act="rgckall"> select all unverified</label></div>` : ''}
-    <div class="grid2"><div><h3 style="margin-bottom:6px">By company</h3>${chipRow(by(r => r.paying_company || 'Company not tagged'), 'No payments.')}</div><div><h3 style="margin-bottom:6px">By project</h3>${chipRow(by(r => r.project_name || '—'), 'No payments.')}</div></div></div>
+    <div class="grid3"><div><h3 style="margin-bottom:6px">By ledger head</h3>${chipRow(by(r => catLabel(r) || 'No head'), 'No payments.')}</div><div><h3 style="margin-bottom:6px">By company</h3>${chipRow(by(r => r.paying_company || 'Company not tagged'), 'No payments.')}</div><div><h3 style="margin-bottom:6px">By project</h3>${chipRow(by(r => r.project_name || '—'), 'No payments.')}</div></div></div>
   <div class="card" style="margin-top:12px"><div class="tw"><table><thead><tr><th></th><th>Paid from company</th><th>Project</th><th>Payee</th><th class="r">Gross</th><th class="r">TDS</th><th class="r">Net paid</th><th>UTR</th><th>Entry</th><th>Verification</th><th>Req</th></tr></thead>
     <tbody>${body || '<tr><td colspan="11" class="empty">No payments in this period.</td></tr>'}</tbody></table></div>
     <p class="mut" style="font-size:12px;margin:8px 0 0">Payments entered as already-paid need to be verified by the Owner. Payments made through a batch are verified in the batch. Unverified payments still count in ledgers and project headroom.</p></div>`;
+}
+
+/* ---------- ledger heads (Tally-style chart of expense heads) ---------- */
+const HEAD_KINDS = { project_cost: 'Project cost', staff: 'Staff', admin: 'Admin / office', statutory: 'Statutory', other: 'Other' };
+const KIND_CAT = { project_cost: 'other', staff: 'overhead', admin: 'overhead', statutory: 'statutory', other: 'other' };
+function vHeads() {
+  const used = {}; S.reqs.forEach(r => { if (r.ledger_head_id && r.status !== 'cancelled' && r.status !== 'rejected') used[r.ledger_head_id] = (used[r.ledger_head_id] || 0) + 1; });
+  const groups = []; (S.heads || []).forEach(h => { let g = groups.find(x => x.n === h.grp); if (!g) { g = { n: h.grp, l: [] }; groups.push(g); } g.l.push(h); });
+  const rows = groups.map(g => `<tr class="tot"><td colspan="5"><b>${esc(g.n)}</b></td></tr>` + g.l.map(h => `<tr>
+    <td>${esc(h.name)}${h.is_default ? ' <span class="badge b-open" title="Used when a payment has no head chosen">default</span>' : ''}</td>
+    <td>${esc(HEAD_KINDS[h.kind] || h.kind)}</td>
+    <td><input id="hd-t-${h.id}" value="${esc(h.tally_ledger || h.name)}" style="min-width:220px"></td>
+    <td><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="hd-a-${h.id}" ${h.is_active ? 'checked' : ''}> Active</label></td>
+    <td class="r">${used[h.id] || 0} <button class="btn s" data-act="savehead" data-id="${h.id}">Save</button></td></tr>`).join('')).join('');
+  return `<div class="row" style="margin-bottom:10px"><h2>Ledger heads</h2></div>
+  <div class="note blue">Every payment is booked under one of these heads, so the Payments register can show spending head-wise, project-wise and company-wise. The <b>Tally ledger</b> name is what your accountant uses in Tally. Edit it once here to match Tally exactly. Tally stays the book of record.</div>
+  <div class="card" style="margin-top:12px"><h3 style="margin-bottom:8px">Add a head</h3>
+    <div class="grid3"><div class="field"><label>Head name</label><input id="hd-new-name" placeholder="e.g. Crane Hire – Site"></div>
+      <div class="field"><label>Group (Tally group)</label><select id="hd-new-grp">${groups.map(g => `<option>${esc(g.n)}</option>`).join('')}</select></div>
+      <div class="field"><label>Type</label><select id="hd-new-kind">${Object.entries(HEAD_KINDS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></div></div>
+    <div class="field"><label>Tally ledger name (leave blank to use the head name)</label><input id="hd-new-tally"></div>
+    <button class="btn p" data-act="addhead">Add head</button></div>
+  <div class="card" style="margin-top:12px"><div class="tw"><table><thead><tr><th>Head</th><th>Type</th><th>Tally ledger name</th><th>Status</th><th class="r">Payments</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
 }
 function vAudit() {
   const q = (S.ui.auditQ || '').toLowerCase();
@@ -1153,9 +1193,9 @@ function reqsXlsx(list) {
   const today = todayISO(), tot = sum(L, r => r.net_amount), dev = sum(gate, g => g.short);
   const rows = [['CCI — Payment approval request'], ['Date', fdate(today), 'Prepared by', (S.me && S.me.name) || '', 'Requests', L.length], [],
     ['Total requested (net)', tot, '', 'Within client inflow', tot - dev, '', 'Deviation (above client inflow)', dev], [],
-    ['#', 'Ref', 'Project', 'Payee', 'Category', 'Bill ref', 'Description', 'Due date', 'Priority', 'Gross', 'TDS', 'Other deduction', 'Net requested', 'Client headroom before this line', 'Inflow check', 'Above inflow', 'Deviation reason', 'Expected inflow date', 'Note', 'CEO decision (Approve / Reduce to ₹ / Reject)']];
+    ['#', 'Ref', 'Project', 'Payee', 'Ledger head', 'Bill ref', 'Description', 'Due date', 'Priority', 'Gross', 'TDS', 'Other deduction', 'Net requested', 'Client headroom before this line', 'Inflow check', 'Above inflow', 'Deviation reason', 'Expected inflow date', 'Note', 'CEO decision (Approve / Reduce to ₹ / Reject)']];
   L.forEach((r, i) => { const g = gate[i], bk = bankOf(r.dev_funding_account_id);
-    rows.push([i + 1, r.req_no, r.project_name, r.payee_name, CATS[r.category] || r.category, r.bill_ref || '', r.description || '', r.due_date ? fdate(r.due_date) : '', r.priority === 'urgent' ? 'Urgent' : 'Normal', num(r.gross_amount), num(r.tds_amount), num(r.other_deduction), num(r.net_amount), g.head, g.short > 0 ? 'DEVIATION' : 'Within inflow', g.short > 0 ? g.short : '', g.short > 0 ? (DEV_REASONS[r.dev_reason_code] || '') : '', r.dev_expected_inflow_date ? fdate(r.dev_expected_inflow_date) : '', r.dev_note || '', '']); });
+    rows.push([i + 1, r.req_no, r.project_name, r.payee_name, catLabel(r), r.bill_ref || '', r.description || '', r.due_date ? fdate(r.due_date) : '', r.priority === 'urgent' ? 'Urgent' : 'Normal', num(r.gross_amount), num(r.tds_amount), num(r.other_deduction), num(r.net_amount), g.head, g.short > 0 ? 'DEVIATION' : 'Within inflow', g.short > 0 ? g.short : '', g.short > 0 ? (DEV_REASONS[r.dev_reason_code] || '') : '', r.dev_expected_inflow_date ? fdate(r.dev_expected_inflow_date) : '', r.dev_note || '', '']); });
   rows.push([]); rows.push(['', '', '', 'TOTAL', '', '', '', '', '', sum(L, r => r.gross_amount), sum(L, r => r.tds_amount), sum(L, r => r.other_deduction), tot, '', '', dev]);
   rows.push([], ['Project-wise summary'], ['Project', 'Requests', 'Net requested', 'Client headroom now', 'Above inflow (deviation)']);
   [...new Set(L.map(r => r.project_id))].forEach(pid => { const ls = L.filter(r => r.project_id === pid); rows.push([ls[0].project_name, ls.length, sum(ls, r => r.net_amount), num((posOf(pid) || {}).headroom), sum(L.map((r, i) => r.project_id === pid ? gate[i] : { short: 0 }), g => g.short)]); });
@@ -1170,8 +1210,8 @@ function sheetXlsx(b) {
   const bal = r => Math.max(orig(r) - famPaid(r), 0), totBal = sum(L, bal);
   const rows = [['CCI — Daily Payment Sheet'], ['Sheet no.', b.batch_no, 'Payment date', fdate(b.pay_date), 'Pay from', bank ? bank.label : ''], [],
     ['Total approved value (CEO)', totApp], ['Planned payment today', totPay], ['Balance approval carried forward', totBal], ['No. of payments', L.length], [],
-    ['#', 'Ref', 'Project', 'Payee', 'Category', 'Bill ref', 'Description', 'Gross', 'TDS', 'Net requested', 'CEO approved ₹', 'Payment today ₹', 'Balance approval ₹', 'Mode', 'Deviation', 'Funding account', 'CEO remark', 'CEO approved on', 'UTR', 'Paid on']];
-  L.forEach((r, i) => rows.push([i + 1, r.req_no, r.project_name, r.payee_name, CATS[r.category] || r.category, r.bill_ref || '', r.description || '', num(r.parent_id ? orig(r) : r.gross_amount), num(r.tds_amount), num(r.parent_id ? orig(r) : r.net_amount), orig(r), num(r.approved_amount), bal(r), r.pay_mode || '', r.is_deviation ? 'YES' : 'No', r.is_deviation ? ((bankOf(r.dev_funding_account_id) || {}).label || '') : '', r.ceo_remark || '', fdt(r.ceo_at), r.utr || '', r.paid_date ? fdate(r.paid_date) : '']));
+    ['#', 'Ref', 'Project', 'Payee', 'Ledger head', 'Bill ref', 'Description', 'Gross', 'TDS', 'Net requested', 'CEO approved ₹', 'Payment today ₹', 'Balance approval ₹', 'Mode', 'Deviation', 'Funding account', 'CEO remark', 'CEO approved on', 'UTR', 'Paid on']];
+  L.forEach((r, i) => rows.push([i + 1, r.req_no, r.project_name, r.payee_name, catLabel(r), r.bill_ref || '', r.description || '', num(r.parent_id ? orig(r) : r.gross_amount), num(r.tds_amount), num(r.parent_id ? orig(r) : r.net_amount), orig(r), num(r.approved_amount), bal(r), r.pay_mode || '', r.is_deviation ? 'YES' : 'No', r.is_deviation ? ((bankOf(r.dev_funding_account_id) || {}).label || '') : '', r.ceo_remark || '', fdt(r.ceo_at), r.utr || '', r.paid_date ? fdate(r.paid_date) : '']));
   rows.push([]); rows.push(['', '', '', 'TOTAL', '', '', '', '', '', '', totApp, totPay, totBal]);
   rows.push([], ['Project-wise'], ['Project', 'Payments', 'Planned today ₹']);
   [...new Set(L.map(r => r.project_id))].forEach(pid => { const ls = L.filter(r => r.project_id === pid); rows.push([ls[0].project_name, ls.length, sum(ls, r => r.approved_amount)]); });
@@ -1188,7 +1228,7 @@ function tallyXml(b) {
     const full = Math.abs(num(r.approved_amount) - num(r.net_amount)) < 0.005;
     const tdsIn = s.tds_in_payment === 'yes' && full && num(r.tds_amount) > 0;
     const party = num(r.approved_amount) + (tdsIn ? num(r.tds_amount) : 0);
-    const narr = [r.req_no, r.project_name, r.bill_ref ? 'Bill ' + r.bill_ref : '', r.description || CATS[r.category]].filter(Boolean).join(' | ');
+    const narr = [r.req_no, r.project_name, r.bill_ref ? 'Bill ' + r.bill_ref : '', (headOf(r.ledger_head_id) || {}).tally_ledger ? 'Head: ' + headOf(r.ledger_head_id).tally_ledger : '', r.description].filter(Boolean).join(' | ');
     return `<TALLYMESSAGE xmlns:UDF="TallyUDF"><VOUCHER VCHTYPE="Payment" ACTION="Create" OBJVIEW="Accounting Voucher View">
 <DATE>${dt}</DATE><VOUCHERTYPENAME>Payment</VOUCHERTYPENAME><VOUCHERNUMBER>${x((s.voucher_prefix || 'PAY') + '/' + r.req_no)}</VOUCHERNUMBER>
 <PARTYLEDGERNAME>${x(ledger)}</PARTYLEDGERNAME><NARRATION>${x(narr)}</NARRATION>
@@ -1259,7 +1299,8 @@ const ACT = {
     if (bt === 'advance') bill_ref = 'Advance';
     else if (bt === 'ra') { const sel = $('#rf-rabill').value; const bb = sel && S.ui._lg && S.ui._lg.d.bills.find(x => x.id === sel); bill_ref = bb ? 'Against RA — ' + bb.short : 'Against RA'; bill_id = bb ? bb.id : null; }
     else if (bt === 'other') bill_ref = $('#rf-other').value.trim() || null;
-    const row = { project_id: pid, payee_id: p.id, payee_name: p.name, category: $('#rf-cat').value, bill_ref, bill_id, due_date: $('#rf-due').value || null,
+    const hd = headOf($('#rf-head').value); if (!hd) return toast('Select the ledger head', true);
+    const row = { project_id: pid, payee_id: p.id, payee_name: p.name, category: hd.category, ledger_head_id: hd.id, bill_ref, bill_id, due_date: $('#rf-due').value || null,
       priority: $('#rf-prio').value, paying_company: $('#rf-company').value || null, description: $('#rf-desc').value.trim() || null, gross_amount: gross, tds_amount: tds, other_deduction: oth,
       dev_reason_code: $('#rf-dreason').value || null, dev_expected_inflow_date: $('#rf-ddate').value || null,
       dev_expected_inflow_amount: $('#rf-damt').value ? num($('#rf-damt').value) : null, dev_note: $('#rf-dnote').value.trim() || null };
@@ -1295,7 +1336,7 @@ const ACT = {
       const canAudit = ['owner', 'accounts'].includes(role());
       const au = canAudit ? await qry(sb.from('pay_audit').select('*').eq('entity', 'request').eq('entity_id', r.id).order('at')) : [];
       openModal(`<div class="ovl" data-act="ovl"><div class="modal"><div class="row"><h2>${esc(r.req_no)}</h2>${badge(r.status)}<span class="sp"></span><button class="btn s" data-act="closemodal">Close</button></div>
-        <div class="kv" style="margin:8px 0 14px"><span>Project</span><span>${esc(r.project_name)}</span><span>Payee</span><span>${esc(r.payee_name)}</span><span>Category</span><span>${esc(CATS[r.category])}</span><span>Bill ref</span><span>${esc(r.bill_ref || '—')}</span><span>Paying company</span><span>${canAudit ? `<select id="dt-co">${coOpts(r.paying_company, '— not set —')}</select> <button class="btn s" data-act="setco" data-id="${r.id}">Save</button>` : esc(r.paying_company || '—')}</span><span>Description</span><span>${esc(r.description || '—')}</span>
+        <div class="kv" style="margin:8px 0 14px"><span>Project</span><span>${esc(r.project_name)}</span><span>Payee</span><span>${esc(r.payee_name)}</span><span>Category</span><span>${esc(catLabel(r))}</span><span>Bill ref</span><span>${esc(r.bill_ref || '—')}</span><span>Paying company</span><span>${canAudit ? `<select id="dt-co">${coOpts(r.paying_company, '— not set —')}</select> <button class="btn s" data-act="setco" data-id="${r.id}">Save</button>` : esc(r.paying_company || '—')}</span><span>Description</span><span>${esc(r.description || '—')}</span>
         <span>Gross / TDS / Net</span><span class="amt">${inr(r.gross_amount)} / ${inr(r.tds_amount)} / <b>${inr(r.net_amount)}</b></span>${r.approved_amount ? `<span>CEO approved</span><span class="amt"><b>${inr(r.approved_amount)}</b>${r.ceo_remark ? ' — ' + esc(r.ceo_remark) : ''}</span>` : ''}
         ${r.is_deviation ? `<span>Deviation</span><span class="bad">${inr(r.shortfall_at_approval ?? r.shortfall_at_submit)} above client inflow · ${esc(DEV_REASONS[r.dev_reason_code] || '')} · ${esc((bankOf(r.dev_funding_account_id) || {}).label || '')}${r.dev_note ? ' · ' + esc(r.dev_note) : ''}</span>` : ''}
         ${r.utr ? `<span>UTR</span><span class="mono">${esc(r.utr)} · ${fdate(r.paid_date)}</span>` : ''}</div>
@@ -1483,8 +1524,8 @@ const ACT = {
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Food advance'); XLSX.writeFile(wb, `CCI_auto_payment_sheet_${a.from}_to_${a.to}.xlsx`);
   },
   gridtemplate() {
-    const hdr = ['Project', 'Payee', 'Category', 'Bill ref (Advance / Against RA)', 'Gross', 'TDS', 'Due date (DD/MM/YYYY)', 'Priority (Normal / Urgent)', 'Paying company'];
-    const ex = [[(S.projects[0] || {}).name || 'Project name', ((pickPayees()[0] || {}).name) || 'Payee name', 'Labour', 'Advance', 50000, 500, '', 'Normal', 'Cameo']];
+    const hdr = ['Project', 'Payee', 'Ledger head', 'Bill ref (Advance / Against RA)', 'Gross', 'TDS', 'Due date (DD/MM/YYYY)', 'Priority (Normal / Urgent)', 'Paying company'];
+    const ex = [[(S.projects[0] || {}).name || 'Project name', ((pickPayees()[0] || {}).name) || 'Payee name', 'Subcontract Charges', 'Advance', 50000, 500, '', 'Normal', 'Cameo']];
     const ws = XLSX.utils.aoa_to_sheet([hdr, ...ex]); ws['!cols'] = [24, 30, 14, 30, 12, 10, 22, 24, 28].map(w => ({ wch: w }));
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Payments'); XLSX.writeFile(wb, 'CCI_payment_requests_template.xlsx');
   },
@@ -1516,7 +1557,7 @@ const ACT = {
       if (!o.ok) { problems.push(`Row ${i + 1}: ${o.msg}`); return; }
       if (o.dev && !r.dr) { problems.push(`Row ${i + 1}: deviation needs a reason`); return; }
       const py = payeeOf(o.payee);
-      payload.push({ project_id: r.p, payee_id: py.id, payee_name: py.name, category: r.c, bill_ref: r.bill.trim() || null, due_date: r.d || null, priority: r.pr,
+      payload.push({ project_id: r.p, payee_id: py.id, payee_name: py.name, category: headOf(r.c).category, ledger_head_id: r.c, bill_ref: r.bill.trim() || null, due_date: r.d || null, priority: r.pr,
         gross_amount: num(r.g), tds_amount: num(r.t), other_deduction: 0, paying_company: r.co || null, description: r.ds || null, dev_reason_code: o.dev ? r.dr : null });
       idx.push(i);
     });
@@ -1544,7 +1585,7 @@ const ACT = {
   rgcsv() {
     const { a, b } = rgRange(), q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
     const rows = [['Date paid', 'Paid from company', 'Project', 'Payee', 'Category', 'Bill ref / note', 'Gross', 'TDS', 'Net paid', 'UTR', 'Entry', 'Verified', 'Verified on', 'Req no']];
-    rgRows().forEach(r => rows.push([r.paid_date, r.paying_company || '', r.project_name || '', r.payee_name || '', CATS[r.category] || '', r.bill_ref || '', rgGross(r), rgGross(r) - num(r.paid_amount), num(r.paid_amount), r.utr || '', r.is_backfill ? 'Past entry' : 'Batch', r.is_backfill ? (r.entry_verified_at ? 'Yes' : 'No') : 'Yes (batch)', r.entry_verified_at ? String(r.entry_verified_at).slice(0, 10) : '', r.req_no || '']));
+    rgRows().forEach(r => rows.push([r.paid_date, r.paying_company || '', r.project_name || '', r.payee_name || '', catLabel(r), r.bill_ref || '', rgGross(r), rgGross(r) - num(r.paid_amount), num(r.paid_amount), r.utr || '', r.is_backfill ? 'Past entry' : 'Batch', r.is_backfill ? (r.entry_verified_at ? 'Yes' : 'No') : 'Yes (batch)', r.entry_verified_at ? String(r.entry_verified_at).slice(0, 10) : '', r.req_no || '']));
     download(`payments_register_${a}_to_${b}.csv`, '﻿' + rows.map(r => r.map(q).join(',')).join('\n'), 'text/csv');
   },
   async setco(el) {
@@ -1555,9 +1596,11 @@ const ACT = {
     if (!project || !lbl || gross <= 0 || !d) return toast('Project, payee, amount and date paid are required', true);
     if (!$('#pp-company').value) return toast('Select the paying company', true);
     const py = payeeOf(gPayeeId(lbl, payeeLabelMap())) || S.payees.find(x => x.name === lbl);
+    const hd = headOf($('#pp-head').value); if (!hd) return toast('Select the ledger head', true);
     await guard(async () => {
-      const res = await rpc('pay_backfill_payment', { p_project: project, p_payee_id: py ? py.id : null, p_payee_name: lbl, p_category: $('#pp-cat').value, p_gross: gross, p_tds: tds,
+      const res = await rpc('pay_backfill_payment', { p_project: project, p_payee_id: py ? py.id : null, p_payee_name: lbl, p_category: hd.category, p_gross: gross, p_tds: tds,
         p_paid_date: d, p_bank_account: null, p_utr: $('#pp-utr').value.trim() || null, p_bill_ref: $('#pp-note').value.trim() || null, p_note: null, p_company: $('#pp-company').value || null });
+      await rpc('pay_set_head', { p_id: res.id, p_head: hd.id });
       toast(res.counted ? 'Past payment added — headroom updated' : 'Saved, but dated before the opening position so it is not counted again', !res.counted);
       await refresh();
     });
@@ -1565,6 +1608,19 @@ const ACT = {
   async rmpast(el) {
     const why = prompt('Why is this past entry being removed?'); if (!why || why.trim().length < 3) return;
     await guard(async () => { await rpc('pay_cancel_backfill', { p_request: el.dataset.id, p_reason: why.trim() }); toast('Past entry removed'); await refresh(); });
+  },
+  async addhead() {
+    const name = $('#hd-new-name').value.trim(), grp = $('#hd-new-grp').value, kind = $('#hd-new-kind').value;
+    if (!name) return toast('Enter the head name', true);
+    if ((S.heads || []).some(x => x.name.toLowerCase() === name.toLowerCase())) return toast('A head with this name already exists', true);
+    const sort = Math.max(0, ...(S.heads || []).map(x => x.sort || 0)) + 10;
+    await guard(async () => { await qry(sb.from('pay_ledger_heads').insert({ name, grp, kind, category: KIND_CAT[kind] || 'other', tally_ledger: $('#hd-new-tally').value.trim() || name, sort })); toast('Head added'); await refresh(); });
+  },
+  async savehead(el) {
+    const id = el.dataset.id, t = $('#hd-t-' + id).value.trim(), a = $('#hd-a-' + id).checked, h = headOf(id);
+    if (!t) return toast('Tally ledger name cannot be blank', true);
+    if (!a && h && h.is_default && !confirm('This is the default head for its category. Make it inactive anyway?')) return;
+    await guard(async () => { await qry(sb.from('pay_ledger_heads').update({ tally_ledger: t, is_active: a }).eq('id', id)); toast('Saved'); await refresh(); });
   },
   async addadj() {
     const project_id = $('#ad-project').value, amount = num($('#ad-amt').value), reason = $('#ad-reason').value.trim();
@@ -1613,8 +1669,8 @@ const pcKind = p => p.supplier_id ? 'supplier' : p.subcontractor_id ? 'subcontra
 const pcKindLbl = { supplier: 'Supplier', subcontractor: 'Subcontractor', other: 'Vendor' };
 function pcCategory(inp) {
   const k = inp.dataset.pc;
-  if (k === 'g') { const r = gRows()[+inp.dataset.r]; return r ? r.c : ''; }
-  const c = $(k === 'rf' ? '#rf-cat' : '#pp-cat'); return c ? c.value : '';
+  if (k === 'g') { const r = gRows()[+inp.dataset.r]; const h = r && headOf(r.c); return h ? h.category : ''; }
+  const c = $(k === 'rf' ? '#rf-head' : '#pp-head'); const h = c && headOf(c.value); return h ? h.category : '';
 }
 function pcCandidates(inp) {
   const act = S.payees.filter(p => p.is_active), cat = pcCategory(inp);

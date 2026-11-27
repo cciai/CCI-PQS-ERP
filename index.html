@@ -1514,7 +1514,7 @@ function isOwner(){ return myRole === 'owner'; }
 ============================================================================ */
 async function loadProjects(){
   try{
-    const { data, error } = await withRetry(() => sb.from('ra_projects').select('*').is('deleted_at', null).order('created_at'));
+    const { data, error } = await withRetry(() => sb.from('ra_projects').select('*').is('deleted_at', null).eq('is_overhead', false).order('created_at'));
     if(error){ toast(error.message, true); return; }
     state.projects = data;
     renderProjectList();
