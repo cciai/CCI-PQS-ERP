@@ -104,7 +104,16 @@ function render(){
 function setTab(t){ S.tab = t; S.msg = null; render(); }
 
 function curSub(){ return S.subs.find(s => s.id === S.subId); }
-function curWo(){ const s = curSub(); return s && s.wos.find(w => w.id === S.woId); }
+// One subcontractor = one bill. The anchor WO is his first open WO; items from his other open WOs with the same deduction terms are pooled in.
+function curWo(){
+  const s = curSub(); if(!s || !s.wos.length) return null;
+  const anchor = s.wos.find(w => w.id === S.woId) || s.wos[0];
+  const same = s.wos.filter(w => w.terms === anchor.terms), other = s.wos.filter(w => w.terms !== anchor.terms);
+  return { id: anchor.id, ref: same.map(w => w.ref).join(' + '), nature: same.length === 1 ? anchor.nature : '', multi: same.length > 1, skipped: other.map(w => w.ref),
+    lines: same.reduce((a, w) => a.concat(w.lines.map(l => ({ ...l, woRef: w.ref }))), []) };
+}
+const lineLabel = (l, multi) => (multi ? l.woRef + ' · ' : '') + (l.description || '') + ' (' + (l.unit || '') + ')';
+const fnum = n => Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 3 });
 function curFloor(){ return S.floors.find(f => f.id === S.pick.floor); }
 function curItem(){ const f = curFloor(); return f && f.items.find(i => i.id === S.pick.item); }
 
@@ -112,8 +121,7 @@ function newView(){
   const sub = curSub(), wo = curWo(), fl = curFloor(), it = curItem();
   const subOpts = `<option value="">Select subcontractor</option>` + S.subs.map(s => `<option value="${s.id}" ${s.id===S.subId?'selected':''}>${esc(s.name)}</option>`).join('');
   let h = `<div class="card"><label>Subcontractor</label><select id="sub">${subOpts}</select>`;
-  if(sub && sub.wos.length > 1) h += `<label>Work order</label><select id="wo">${sub.wos.map(w => `<option value="${w.id}" ${w.id===S.woId?'selected':''}>${esc(w.ref)}${w.nature?' – '+esc(w.nature):''}</option>`).join('')}</select>`;
-  else if(wo) h += `<div class="note">Work order ${esc(wo.ref)}${wo.nature?' – '+esc(wo.nature):''}</div>`;
+  if(wo) h += `<div class="note">Work order${wo.multi?'s':''} ${esc(wo.ref)}${wo.nature?' – '+esc(wo.nature):''}</div>${wo.skipped.length?`<div class="note" style="color:var(--red)">Not on this bill (different terms): ${esc(wo.skipped.join(', '))}. Tell the office.</div>`:''}`;
   h += `</div>`;
   if(!S.subs.length) h += `<div class="card note">No subcontractor has an open work order on this project yet.</div>`;
   if(wo){
@@ -126,7 +134,8 @@ function newView(){
         const whole = it.flats.length === 1 && it.flats[0].flat_no === 'Whole floor';
         h += `<label>${whole ? 'Floor-wise work (tap to confirm)' : 'Completed flats (tap to select)'}</label><div class="chips">${it.flats.map(f => `<button class="chip ${S.pick.flats.includes(f.id)?'on':''}" data-f="${f.id}">${esc(f.flat_no)}</button>`).join('')}</div>
           ${whole ? '' : `<button class="btn alt" style="margin-top:8px;padding:9px" id="allf">Select all flats</button>`}
-          <label>Work item as per work order</label><select id="wl">${wo.lines.map(l => `<option value="${l.id}" ${l.id===S.pick.wl?'selected':''}>${esc(l.description)} (${esc(l.unit||'')})</option>`).join('')}</select>
+          <label>Work item as per work order</label><select id="wl">${wo.lines.map(l => `<option value="${l.id}" ${l.id===S.pick.wl?'selected':''}>${esc(lineLabel(l, wo.multi))}</option>`).join('')}</select>
+          ${(() => { const x = wo.lines.find(l => l.id === S.pick.wl) || wo.lines[0]; return x ? `<div class="note">${wo.multi ? esc(x.woRef) + ' · ' : ''}Billed earlier: <b>${fnum(x.prev)} ${esc(x.unit||'')}</b>${Number(x.pending) ? ' · With office, not yet billed: <b>' + fnum(x.pending) + '</b>' : ''}${Number(x.est) ? ' · Work order quantity: ' + fnum(x.est) : ''}</div>` : ''; })()}
           <label>Quantity done${wo.lines.find(l=>l.id===S.pick.wl)?' ('+esc(wo.lines.find(l=>l.id===S.pick.wl).unit||'')+')':''}</label>
           <input id="qty" type="number" inputmode="decimal" step="any" value="${esc(S.pick.qty)}" placeholder="Total for the selected flats">
           <button class="btn" id="addl">Add to bill</button>`;
@@ -134,7 +143,7 @@ function newView(){
       h += `</div>`;
     }
     if(S.lines.length){
-      h += `<div class="card"><h2 style="font-size:20px">This bill</h2>${S.lines.map((l,i) => `<div class="line"><div><b>${esc(l.itemName)}</b> – ${esc(l.floorName)}<div class="note">${l.flatNos === 'Whole floor' ? 'Whole floor' : 'Flats ' + esc(l.flatNos)} · ${esc(l.qty)} ${esc(l.unit||'')}</div></div><button class="x" data-rm="${i}">Remove</button></div>`).join('')}
+      h += `<div class="card"><h2 style="font-size:20px">This bill</h2>${S.lines.map((l,i) => `<div class="line"><div><b>${esc(l.itemName)}</b> – ${esc(l.floorName)}<div class="note">${l.multi ? esc(l.woRef) + ' · ' : ''}${l.flatNos === 'Whole floor' ? 'Whole floor' : 'Flats ' + esc(l.flatNos)} · ${esc(l.qty)} ${esc(l.unit||'')}</div></div><button class="x" data-rm="${i}">Remove</button></div>`).join('')}
         <label>Remarks (optional)</label><textarea id="rem"></textarea>
         <button class="btn" id="submit" ${S.busy?'disabled':''}>Submit bill to office</button></div>`;
     }
@@ -154,7 +163,7 @@ function newView(){
     if(!S.pick.flats.length){ S.msg = null; return flash(curItem().flats.length === 1 && curItem().flats[0].flat_no === 'Whole floor' ? 'Tap "Whole floor" to confirm the work is complete.' : 'Select at least one flat.'); }
     if(!(q > 0)) return flash('Enter the quantity done.');
     const wl = w.lines.find(l => l.id === wlid);
-    S.lines.push({ wo_line_item_id:wlid, floor_stage_id:f.id, budget_item_id:i.id, flat_ids:S.pick.flats.slice(), qty:q, unit:wl.unit, itemName:i.description, floorName:f.name, flatNos:i.flats.filter(x => S.pick.flats.includes(x.id)).map(x => x.flat_no).join(', ') });
+    S.lines.push({ woRef:wl.woRef, multi:w.multi, wo_line_item_id:wlid, floor_stage_id:f.id, budget_item_id:i.id, flat_ids:S.pick.flats.slice(), qty:q, unit:wl.unit, itemName:i.description, floorName:f.name, flatNos:i.flats.filter(x => S.pick.flats.includes(x.id)).map(x => x.flat_no).join(', ') });
     S.pick = { floor:S.pick.floor, item:'', flats:[], wl:'', qty:'' }; S.msg = null; render();
   });
   document.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { S.lines.splice(+b.dataset.rm, 1); render(); });
