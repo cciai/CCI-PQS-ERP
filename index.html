@@ -318,6 +318,7 @@
   #billRows .bitem-links a.bill-split{ color:var(--amber); }
   #billRows .bitem-links a:hover{ text-decoration:underline; color:var(--red); }
   #billRows .bitem-links a.bill-split:hover{ color:var(--amber); }
+  .wo-tag{ display:inline-block; font-family:'Barlow',sans-serif; font-size:9.5px; font-weight:600; letter-spacing:.04em; color:var(--steel); background:rgba(0,0,0,0.05); border-radius:4px; padding:1px 6px; vertical-align:1px; }
   .bill-addbar{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:10px 0 4px; padding:6px 10px; border:1px dashed rgba(226,134,30,0.45); border-radius:6px; background:rgba(226,134,30,0.05); font-size:12px; color:var(--amber); }
   .bill-addbar select{ max-width:380px; font-size:12px; padding:3px 6px; }
   .bill-sticky{ max-width:none !important; display:grid; grid-template-columns:repeat(8,auto); justify-content:space-between; gap:6px 18px; position:sticky; bottom:0; z-index:5; margin:14px -24px 0 !important; border-radius:0 !important; border-width:1px 0 0 0 !important; box-shadow:0 -4px 12px rgba(0,0,0,0.06); padding:10px 24px !important; }
@@ -3106,7 +3107,26 @@ async function loadBillEntry(billId, woId){
     if(e2){ toast(e2.message, true); return; }
     state.billLines = entries || [];
 
-    const lineIds = (state.woDetail.ra_wo_line_items || []).map(l => l.id);
+    // other active Work Orders of the same subcontractor in this project with identical deduction terms: their lines can be billed on this same RA bill
+    state.billSibLines = []; state.billSibSkipped = [];
+    state.billWoIds = [state.woDetail.id];
+    try{
+      const w0 = state.woDetail;
+      if(w0.subcontractor_id && w0.project_id && !(state.projects.find(x => x.id === w0.project_id) || {}).lumpsum_billing){
+        const { data: sib } = await withRetry(() => sb.from('ra_work_orders')
+          .select('id, wo_ref, status, billing_locked, retention_pct, tds_pct, safety_pct, safety_amount, gst_pct, ra_wo_line_items(*, ra_budget_items(description, unit, stage_id, budgeted_qty, billing_locked, lock_reason))')
+          .eq('subcontractor_id', w0.subcontractor_id).eq('project_id', w0.project_id).is('deleted_at', null).eq('status', 'active').neq('id', w0.id));
+        (sib || []).forEach(w => {
+          const same = ['retention_pct','tds_pct','safety_pct','safety_amount','gst_pct'].every(k => Number(w[k] || 0) === Number(w0[k] || 0));
+          if(w.billing_locked){ state.billSibSkipped.push(w.wo_ref + ' (locked)'); return; }
+          if(!same){ state.billSibSkipped.push(w.wo_ref + ' (different retention/TDS/safety/GST terms)'); return; }
+          state.billWoIds.push(w.id);
+          (w.ra_wo_line_items || []).filter(l => l.activity !== 'lumpsum').forEach(l => state.billSibLines.push({ ...l, _woRef: w.wo_ref }));
+        });
+      }
+    }catch(eS){ console.error(eS); }
+    // lines already on this bill that belong to a WO that no longer qualifies must still show
+    const lineIds = (state.woDetail.ra_wo_line_items || []).concat(state.billSibLines).map(l => l.id);
     let prevMap = {};
     if(lineIds.length){
       const { data: cum, error: e3 } = await withRetry(() => sb.from('ra_wo_line_item_cumulative').select('*').in('wo_line_item_id', lineIds));
@@ -3124,7 +3144,7 @@ async function loadBillEntry(billId, woId){
     // previous quantity per WORK ORDER LINE x FLOOR (budget item) from the other counted bills of this WO
     const pf = {};
     try{
-      const { data: ob } = await withRetry(() => sb.from('ra_bills').select('id').eq('wo_id', state.woDetail.id).in('status', ['submitted','approved','paid']).is('deleted_at', null).neq('id', billId));
+      const { data: ob } = await withRetry(() => sb.from('ra_bills').select('id').in('wo_id', state.billWoIds || [state.woDetail.id]).in('status', ['submitted','approved','paid']).is('deleted_at', null).neq('id', billId));
       const oids = (ob || []).map(b => b.id);
       if(oids.length){
         const { data: oe } = await withRetry(() => sb.from('ra_bill_line_entries').select('wo_line_item_id, budget_item_id, this_qty').in('bill_id', oids));
@@ -3256,6 +3276,13 @@ function renderBillEntry(project){
   const bill = state._currentBill;
   const LS = lsIs(project);
   const lines = (wo.ra_wo_line_items || []).filter(l => LS ? l.activity === 'lumpsum' : l.activity !== 'lumpsum').sort((a,b) => (a.sl_no||0) - (b.sl_no||0));
+  if(!LS && (state.billSibLines || []).length){
+    const own = lines.map(l => ({ ...l, _woRef: wo.wo_ref }));
+    lines.length = 0;
+    own.forEach(l => lines.push(l));
+    state.billSibLines.slice().sort((a,b) => String(a._woRef).localeCompare(String(b._woRef)) || (a.sl_no||0) - (b.sl_no||0)).forEach(l => lines.push(l));
+  }
+  const multiWO = !LS && new Set(lines.map(l => l._woRef)).size > 1;
   const isDraft = bill.status === 'draft';
   // Editable through "submitted" too — locked only once approved or paid. Every
   // edit while submitted still re-validates against the budget cap live (the
@@ -3310,7 +3337,7 @@ function renderBillEntry(project){
       if(!isEditable && !(thisQty > 0) && !(fPrev > 0)) return '';
       return `
       <div class="bitem" data-row="${rid}" style="grid-template-columns:1fr 60px 80px 90px 90px 90px 110px;">
-        <span class="desc">${k === 0 ? escapeHtml(item.description||'') + lockBadge : '<span style="color:#8B8676;">↳ same item, another floor</span>'}
+        <span class="desc">${k === 0 ? escapeHtml(item.description||'') + (multiWO ? ` <span class="wo-tag">${escapeHtml(l._woRef||'')}</span>` : '') + lockBadge : '<span style="color:#8B8676;">↳ same item, another floor</span>'}
           <div class="bitem-sub">
           ${LS ? `<div class="wo-line-path">${escapeHtml(getStagePath(item.stage_id))}</div>` : wbsPickerHtml(rid, e.budget_item_id, canEditRow)}
           ${LS ? '' : (canEditRow ? `<input class="bill-remark" data-row="${rid}" placeholder="Remarks (optional)" maxlength="300" value="${escapeHtml(e.remarks||'')}">` : (e.remarks ? `<div class="wo-line-path" style="font-style:italic;">Remarks: ${escapeHtml(e.remarks)}</div>` : ''))}
@@ -3349,6 +3376,8 @@ function renderBillEntry(project){
       </h3>
       <div class="wo-rate-note">${wo.ra_subcontractors ? escapeHtml(wo.ra_subcontractors.name) : ''} · Period ${isEditable ? `<input type="date" id="billPeriodFrom" value="${bill.period_from||''}" style="font-size:12px;padding:2px 4px;"> to <input type="date" id="billPeriodTo" value="${bill.period_to||''}" style="font-size:12px;padding:2px 4px;">` : `${bill.period_from} to ${bill.period_to}`}${isFinalized ? '' : (woLocked ? ' · Work Order locked — view only' : !isEditable && bill.status!=='draft' ? ' · Locked — approved bills can no longer be edited' : '')}</div>
 
+      ${multiWO ? `<div class="wo-rate-note" style="margin:-10px 0 12px;">This RA bill covers ${[...new Set(lines.map(l => l._woRef))].map(escapeHtml).join(' + ')} — same subcontractor, same deduction terms. Each item shows its Work Order.</div>` : ''}
+      ${isEditable && (state.billSibSkipped || []).length ? `<div class="wo-rate-note" style="margin:-10px 0 12px;color:var(--red);">Not included on this bill: ${(state.billSibSkipped || []).map(escapeHtml).join('; ')}.</div>` : ''}
       ${woLocked && !isFinalized ? `<div class="locked-note">🔒 This Work Order is locked${wo.lock_reason?' — '+escapeHtml(wo.lock_reason):''}. This bill cannot be edited or submitted until the Owner unlocks the Work Order.</div>` : ''}
       ${isFinalized ? `<div class="locked-note"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Finalized by Accounts on ${new Date(bill.finalized_at).toLocaleDateString('en-IN')} — this bill is now permanently locked. No edits or deletion, by anyone, including Owner.</div>` : ''}
       ${bill.rejection_reason ? `<div class="locked-note" style="color:var(--red);border-color:rgba(193,69,58,0.35);background:rgba(193,69,58,0.08);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg> Rejected: ${escapeHtml(bill.rejection_reason)}</div>` : ''}
@@ -3357,7 +3386,7 @@ function renderBillEntry(project){
       <div class="bitem-head bill-head" style="grid-template-columns:1fr 60px 80px 90px 90px 90px 110px;">
         <span>${LS ? 'Item – floor' : 'Item'}</span><span>Unit</span><span class="rate">${LS ? '' : 'Rate'}</span><span class="qty">${LS ? 'Previous ₹' : 'Previous'}</span><span class="qty">${LS ? 'This bill ₹' : 'This Bill'}</span><span class="qty">${LS ? 'Cumulative ₹' : 'Cumulative'}</span><span class="amount">This Amount</span>
       </div>
-      <div id="billRows">${rowsHtml}${isEditable ? `<div class="bill-addbar"><b>+ Add item</b> <select id="billAddSel"><option value="">Choose Work Order line…</option>${lines.map(l => { const it = woLineItem(l); return `<option value="${l.id}">${escapeHtml(it.description||'')} — ${escapeHtml(it.unit||'')}${l.activity==='lumpsum' ? '' : ' @ ₹'+fmtNum(Number(l.agreed_rate||0))}</option>`; }).join('')}</select> <button class="btn tiny" id="billAddBtn" type="button">Add</button></div>` : ''}${isEditable && hiddenCount ? `<div class="wo-rate-note" style="margin:8px 0;">${hiddenCount} Work Order line${hiddenCount>1?'s':''} left out of this bill. <a href="#" id="billUnhide">Show them again</a></div>` : ''}${LS && !lines.length ? '<div class="wo-lines-empty">No items added yet — choose category, floor and item above.</div>' : ''}</div>
+      <div id="billRows">${rowsHtml}${isEditable ? `<div class="bill-addbar"><b>+ Add item</b> <select id="billAddSel"><option value="">Choose Work Order line…</option>${lines.map(l => { const it = woLineItem(l); return `<option value="${l.id}">${multiWO ? escapeHtml(l._woRef||'') + ' · ' : ''}${escapeHtml(it.description||'')} — ${escapeHtml(it.unit||'')}${l.activity==='lumpsum' ? '' : ' @ ₹'+fmtNum(Number(l.agreed_rate||0))}</option>`; }).join('')}</select> <button class="btn tiny" id="billAddBtn" type="button">Add</button></div>` : ''}${isEditable && hiddenCount ? `<div class="wo-rate-note" style="margin:8px 0;">${hiddenCount} Work Order line${hiddenCount>1?'s':''} left out of this bill. <a href="#" id="billUnhide">Show them again</a></div>` : ''}${LS && !lines.length ? '<div class="wo-lines-empty">No items added yet — choose category, floor and item above.</div>' : ''}</div>
 
 
 <h4 class="wo-lines-title">Debit / Recovery (optional)</h4>
@@ -3620,7 +3649,7 @@ function printBill(bill, wo, lines, subTotal, retentionAmt, tdsAmt, safetyAmt, d
       if(first){ sl = ++slNo; }
       out.push(`<tr>
       <td>${first ? sl : ''}</td>
-      <td>${first ? escapeHtml(item.description||'') : '<span style="color:#555;">↳ same item</span>'}${wbs}${rem}</td>
+      <td>${first ? escapeHtml(item.description||'') + (new Set(lines.map(x => x._woRef)).size > 1 ? ` <span style="font-size:8.5px;color:#555;">[${escapeHtml(l._woRef||'')}]</span>` : '') : '<span style="color:#555;">↳ same item</span>'}${wbs}${rem}</td>
       <td class="num">${escapeHtml(item.unit||'')}</td>
       <td class="num">${l.activity==='lumpsum' ? '—' : fmtNum(rate)}</td>
       <td class="num">${fmtNum(prevQty)}</td>
@@ -3665,7 +3694,7 @@ function printBill(bill, wo, lines, subTotal, retentionAmt, tdsAmt, safetyAmt, d
         </div>
         <div>
           <h4>Work Order</h4>
-          <div class="n">${escapeHtml(wo.wo_ref||'')}</div>
+          <div class="n">${escapeHtml([...new Set([wo.wo_ref].concat((lines||[]).filter(l => l._woRef && Number(lineMap[l.id]||0) > 0).map(l => l._woRef)))].filter(Boolean).join(" + "))}</div>
           Retention ${wo.retention_pct}% · TDS ${wo.tds_pct}% · Safety ${wo.safety_pct?wo.safety_pct+'%':'₹'+fmtNum(wo.safety_amount||0)} · GST ${gstPct}%${bill.gst_pct!==null&&bill.gst_pct!==undefined?' (overridden for this bill)':''}
         </div>
       </div>
