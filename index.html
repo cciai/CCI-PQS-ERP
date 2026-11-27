@@ -399,6 +399,36 @@
   ::-webkit-scrollbar{ width:8px; }
   ::-webkit-scrollbar-thumb{ background:rgba(255,255,255,0.15); border-radius:8px; }
 
+  .mbar, .mbackdrop{ display:none; }
+  @media (max-width: 760px){
+    .app{ display:block; }
+    .mbar{ display:flex; align-items:center; gap:10px; position:sticky; top:0; z-index:40; background:var(--navy-2); color:#EDEBE3; padding:10px 14px; font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:18px; letter-spacing:.03em; }
+    .mbar button{ background:none; border:1px solid rgba(255,255,255,0.25); color:#EDEBE3; border-radius:7px; font-size:20px; line-height:1; padding:5px 11px; }
+    .mbar-sub{ font-family:'Barlow',sans-serif; font-weight:400; font-size:10px; color:var(--amber-dim); letter-spacing:.06em; text-transform:uppercase; }
+    .sidebar{ display:flex !important; position:fixed; top:0; left:0; bottom:0; width:84%; max-width:320px; z-index:60; overflow-y:auto; transform:translateX(-102%); transition:transform .22s ease; }
+    body.nav-open .sidebar{ transform:none; box-shadow:0 0 40px rgba(0,0,0,0.5); }
+    body.nav-open .mbackdrop{ display:block; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:50; }
+    .main{ padding:16px 12px 50px; min-height:calc(100vh - 54px); }
+    #tabContent{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
+    .bitem, .bitem-head{ min-width:640px; }
+    .proj-header h1{ font-size:22px; }
+    .modal{ width:94vw !important; max-width:94vw !important; }
+    /* bill entry: each line becomes a stacked card instead of a wide row */
+    .bill-head{ display:none !important; }
+    #billRows{ overflow-x:visible; }
+    #billRows .bitem{ min-width:0; display:grid !important; grid-template-columns:repeat(3,1fr) !important; gap:8px 10px; padding:12px 6px; border-bottom:1px solid var(--paper-line); font-size:12.5px; }
+    #billRows .bitem > span{ text-align:left !important; min-width:0; }
+    #billRows .bitem > span:nth-child(1){ grid-column:1 / -1; }
+    #billRows .bitem > span:nth-child(n+2)::before{ display:block; font-size:9.5px; letter-spacing:.06em; text-transform:uppercase; color:#B0AB98; font-weight:500; }
+    #billRows .bitem > span:nth-child(2)::before{ content:'Unit'; }
+    #billRows .bitem > span:nth-child(3)::before{ content:'Rate'; }
+    #billRows .bitem > span:nth-child(4)::before{ content:'Previous'; }
+    #billRows .bitem > span:nth-child(5)::before{ content:'This bill'; }
+    #billRows .bitem > span:nth-child(6)::before{ content:'Cumulative'; }
+    #billRows .bitem > span:nth-child(7)::before{ content:'This amount'; }
+    #billRows .bitem input.bill-line-qty{ width:100%; font-size:15px; padding:8px; }
+    #billRows .bitem select{ width:100%; margin-top:5px; }
+  }
   @media (max-width: 760px){
     .app{ grid-template-columns:1fr; }
     .sidebar{ display:none; }
@@ -478,6 +508,8 @@
 </div>
 
 <div id="appScreen" class="app" style="display:none;">
+  <div class="mbar"><button id="mNavBtn" aria-label="Menu">☰</button><span>CAMELS</span><span class="mbar-sub">Cameo · Project &amp; Budget Setup</span></div>
+  <div class="mbackdrop" id="mBackdrop"></div>
   <div class="sidebar">
     <div class="brand" style="flex-direction:row; align-items:center; gap:10px;">
       <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAYAAADimHc4AAA0bUlEQVR42u29d5gcxdX2/avq7ombc1TOCCGBRBY5G4MxwSQb2wQTXmwwGDAOLzY2ILAx0QQbTDTJZETOWRJIKOe8Oe/kme6u+v7omdWutIAEEvj5nrevq69daWc6nFN1wn3uOiX4gkNrbQghXIANGzYEq6urpwOHSSl2AzFJCFGitdZCCMH/wiP37kqpdiHEIuATpdQbzc3N7w4ZMiS5uQwHO8TnXFgAQgihIpFIeSgU+hlwmmEY4zb7HP/vgM3Hn1Jqqdb6oUQi8Y+CgoJ2rbUEtBBCf6kCtNZSCKEAHMc5B7jKMIzqnMC11m72e+J/68gfbCYAuVNKKQWA67rNSqmrfD7f3ZvLdlAF5D6wfv364tra2n8YhnF8VqMOIIUQ8lt8TcjOOI3ue3jd9yJi0yuJz53c35RCFKCklGZWEf+JRqNnFxcX92yuBLG58Ds7O+sLCgpeME1zklLK0VobOY1+08LWWnvyFAbbMtk0gHLR6OwLStjmyaq/thKVUloI4UopTcdxFkQikaNLS0s39leC6G/zV3Z25g0vLHzfNM2dlVK2EML6ZuWu0GiyA6ffiAI31d13qkwM7aYBBUIijACGLw/DX4j0F2IEihHS2OzSCo1CfCVlfO0ZYUspLcdxFvb29u5bWloay/kE0d9TZzKZRyzLOvmbFb5GK4WQZp9clJMh3bWSVPtC0p3LyfSuRyU7UHYUlUmAdkE7aOWgtUIIgRASpA/pC2EEyzHz6vCXjiVQMZlA+XjMYEk/ZWSDkm/QouaUYNv2Ez6f76SczEXul3Q6fYrP5/u3UsoRQpjflOClYfYJJdE8l+j6t0k0zcGONqCdNAIN2kUpFykl0gpjBIsxg8VIfxFmoBBhBr1ruBlwUtiJdpx4G3aiDTeVwPDnE6jYibzhh5I//GCscEXfrAD9jSlCa+1IKc1MJnOa3+//t9baEFpr0d3dXVBYWLhESlmdtVtyxz6I22dmnGQ33Stm0rP8BTLdqxAopGGhlQPaxfDn4S8chr98IoHyCfhLRmGGKzH8BUjj8yepcm3cZBeZaAOplgXEG2eRal+E67qEaqZSuvNp5NXv2W9GiB1umrLOWWitmyORyITi4uKIAMhkMhdblnXjDh/92ShGSImbjtK+4BE6Fz+BE23EsIIIaaCdBKYVJFAxkfxhBxKu2wt/8UiElFs6Wq36rjnAaQrh+YbNbu+mo8SbPqFn2XPEGj4mUDKSit0vIK9+r6zSnC18x46aBbZtX+Tz+W4WWmuf67rzDMMYvyNHv1Zun7npWPIsLbPuIN21CjPgjWSV7sEMFFE4+giKJ3yfUNUufQLUWvfZbSH6j1TxRXFQTkvZaEgMEK4db6dr0RN0L38ef+lY6va7Aiu/yruPEDssjNVaKymlcF13ybJly3YViURmut9vvCOlRCstdsR9c8JP9zay/q0/07PyVQwrhOkL4qa6MfxhSieeQPkup+MvGpp9UOU55z6Bi+0X3gIyqwzXTtE+9z66V75G+eRTKZt4fDaMVTvMJAkhtFKKdDq9n7Bt98+mKa9USrlCCGP7mxyNkAady19h3et/xI614guXop0U2o5TMu5wqva8kFD5uGzs7HhJ1Y52jFp7EZRhIoBMtJXGD2/FsILUTb8EaQVQymVHGASttSulNBzHuVY4jvOiYRhHKqXUdjU/WoMQCCHY8N4tbHz/VkzLj+EL4aY68eVVMuSAKyidcMwm+yu++Rh982isa/nL9G78hJrdz8RfUL1DlKC1UlIa0rbtN4Truo1Sypqs/RfbU/holxUzr6Rl3mME8koRQuAkOigauR8jj7wWf2HdtxKTf9GMkIZJqmcj7UtmUj7+SALFQ7e7ErTWOusHWoT2Drb3yNduhiVP/pyuZS/iyysHrXDTPVTvcRbDD74SIeQ3EnV8VX+l7BQdK16loH4agYJqVM4fbWcUVbiuq7bryM+CgoseO4/2JTMJFFSCtlGZOMMP+x21u/8UnQsfv+1R//kmAikNtHLpbZxPXsUYDF9408zenvUEpZTe3lN48dOX0vzJw4QKK1GujbJTjD7mWqonn5Qd9fJbRSu39n2ElGilSPQ048+vQJomaI1SChAYxtcfQNtNAbmpu+adW1n9yjX48ysQ2sVO9TLu2Buo2e1klGsjpAn/Y4stmyOkGsdxt/irYWy9WTW3j/C9kd+x/E3WvDYDK1SM1ppMvIvRR/zmf6zwARzb4aM58+jojPCdIw9i/cYW5s5dQCCUx+EH70XAZw4eWelvagZkMftMvIvZd3wXO9aG4Q/jxDuonnoqE477y/8cs9MftnAVpmnw/kdz+e7Rx3PonlUUVk5gn7Eu5XlR1jRlWN5Vw067HkhxSTE93R0YpCkpq+HY7x6OaYBS+ksdt7k94mghDFa8fA3J7o34wqW4qR7yandh7Heu9hBH8d8hfK31VkcyUgq01owbPZSCiuHMXtbN9ft3c8jkAq57MoWrDA4Y10Ze5j9E1qSp8wme/DCCk4qxdvVyfv7zCzCk+NL7ya9r94U0aF/xLo2fPoEZKEQ5aYTpY8Jxf8HwBfvw+m93NLu4rkJKidYa11VbZftdV1FWVsr0faexfk0LQ6rzSLuChrUt3PfsCsoK/Rw+rYxj9qnh6H3rqS/1M2Z4DYs+eor1G9swDCPrsHeICdJ99n/OXcfR27gQK1iAHW9n9JG/Zfh+F/xX2H2ldF+0kk4l8QeCfUqRUn5RORHDMFi+ch17HXAM/7hoJAdMLsb0WQjl0NWbJOwH2xUYpqQtAqGAxdCqAB8v6mCd7zhOP/0UXNfpw5226wzwgDJJy8KZ9GycixUswE1HKazfjaF7n+3NDmF8y8JXGIbkiWff5PhTL2LoxCPY84BTeO3N9790dOb+dt+jLzJ1lMHxh9SigUzGIeUa5OcHMQWkUjaGFjQ19fLKu2t56NVObn50NU0t7f0R+O3vA7wY2aFx1r8wLD9CeJWrkYf8Cmn6+jneb9eJ3v6Px/jPv67hZ8fWM606j789PIfDjzyN1159jIP33xPHcQYNG3PQw5xPF3LI5AJiccW/X2vi5P1K8Af8WAbMeLyF9xfFyBNxup0yqksF4wsXI/LGcNbZZ6O1/sJZ9pUVkIv5O1a9T6zpM3zBIuxkN+XjDqJszP4edvItQgxae2ZnzYY23nr+H8y8bldCpYWsWtXDMx900pXq5cJLfs+ST15GSoHrulsoIUcE6eruYcS+JVjS4a9Pt/Dkm61MGxtiSbPipU+jEOniyBO+x8O3XE0sluD9997jRwcdQElhcKvgC/MrZicAtHz2JBqBlBJDmtTv87MBoem3aXpM0+C5ma9z3DSBZZo0b+ylNF+QSAucpGTpp4u54PKbuH3GL5FyS5+QE5wkQ1FYYkqoKvbz7pwe3l2c9pBe6XLE9w7nmYf/hs/nB0oZP/rUvmcQQnwpu0V+FecrpUE62kp048f4w0UoO07R8D0oHrZnluFg/Bdkr4IFc15n74mFROI2EkV+0KA07DCizuKSc6YQX/kU555zLu/NWjrAJ3iQj8C2XYQToyTPxNAwrlpiBExCRT4MleKgA/fgxaf/hWn5cF0XpRS2beO67qaRL7azD9BKIQxJz9qPcOId+PLKUekIVbt8HyFEFro1tmMJ2Yvdc4jtl01p13UxTZNfX3MvhZkl1JaNoyPi4LMkXZE0x+xbwYn7V1BXHcROD2XRqjaeefhy0H9m+p479xOeoLWjG5wUVaUhkhmHfcfn8cBrERwFbtpm6LD6vmzZsjxRmua2iVR+VfMT3TgbyxcArQgW11My+qA+57y9Dik980bWmUkpvZHmuriuuwU52DM9Jn+7/X7ee+Ymzjl6KL0xG6E1ylUoV/OTQysIW5q2tgRt3UmufKATnYnSOPvvdPcmEYBt22it+fiTxZQFeqks8pGwJVNGhggXmNiOBkMSi8ayz/nV31luc9YrDVwnRaJtCYY/DCpF0bA98YVLUDl6x3Y60uk0zS3tCClZs76Frt4UpmlimCamaQ548Vy8/9nidSx/926e/f1YCkIGqbSDVspLxIB02sa2XVzHpaZYsN9OAa6+ayOPPvchPateRBoGfr8fIQQ33n4/R+9ZDFqRdATBoEFtiYlHTxbYtvO139HcZohWQLp7I26iA8sfwnbTFI3cbxN5djvI33FdLNPk2r/8nVeff4zb/3ganU1LeOuzBBOmHQbKQWFy/AknEAz40NrjGoHFJ++/yE8PDJJyDDJ2BtOUWVa3BKU8oleW1RuNaQ6eFCJQFuLZt9IEr/orN18fJhMew5V/uJuuNe9w6qXTiSQyRJMGHy1NELA0KK9oX1xU8LVp+uY2Vk8RQLpnPQIXaQTw5ZeRVz3J4ydvI+SQc3qbT+HcVXbeeSIz/noLZc6nPPZxGzrdyyS7jYZuwe1PLiOVynD22T/BcWwsyyLjuIw25lAaCmA7LmiP3NCXuQvtKQCNEJJUWlFVbFFWZNKUcnn03R5eOvDn9PYIwkHN63+ZjGNnMC2Lzu4Er37aQ1dMgfRM0K67TBhIg9nxM8D7kYk09HE5A8VD8RdUZ5nMYpuqTrnY+/NggZWrN3DDeROoH1LJGYdLZCpMTbEgv8jPb388mafnvk48eTqhgCQSS/Pmo1czKdRGPGPR2ZVmWGUQpbKkfa1xhTeDc0CbdiHoE5TkmTS4SQzTwFZBTjowxCUn1TKqJkhvzKa6TDB7SQ+vzOnBsfyIZJwDj9ifk447wss5vijq255haE6+TrwdaVogNMHSUR6jzWPdbVMoO/uzlcxftCIbAm4aRYZhYDuKJZ+9z367VrFoYQPjhwZxheSBV1u4+ckm/v74YgLl4wn4JBqDv864BrP5DQry83j8vU5emhMhHDCxXXBdLzPO3UMpUEqgNGgtMKQCKXBTiouOKeW+S0dSVWjS1ZvGNAQ90Qz/eKmVSEJiK4HOZDjl+KMoLy/DcRzEF7H3t28Y6unLzcQwrABa2QRKhm9T8qWyecJdd97N4g8e56U5XVz1h6s4/QfHkMnYmKaBlJKOrijFwQy2yuOk3y5g+sQwr8zuwvaVMfPpu3AzCSaMG41hGPzrkRfoXj6TKSeNpLE1wW0zuzhxehlKaRwHMDQKjc8nWdtiU15kkR/wkqR0xiWW9BSAowkHDHpjDpGESzggKA4b/Pq+RpatSmEWWLjpDKHKco44ZL+tghq2bxSUE7CyMSw/huXHV1g7cHp8CTIppWTxsnUE2mdy668nMKJS8sMzf8uGpi58PqvPL6QzNvlBwbBKP60Jk/uf6yYtC3n7pX+xx67j2XvP3SgqKiCVtrnnngc4aGIxju3y0YoMPe0uHyyLE0sqtKvIZFwyjucQ3pjbRTypspwlaO91aO52wRAIEx55p4vWLpeioEEypbni3gZue7oVGTYQ0kBFevnRyUdTV1v1pYjqDghDRTbWFximH9OfhxUqG3SUe6eXHW6KErz0fPXST5k6yiITVYTCAU47oIAHb7mUpUtXIqWXkSaTSQpDLqUVIaaNzccQaXaePJaJE8biOC6ZTAatNe999BmdGxcxrLqQlC15c0EM4ZMsWZvk5mebyfOBVJqgIdjQkuaVuVHCfkk67eI3JHNXJoj12BhSgN9g0bo0R169kjNuWschv1vF7c+0IQISaZrYkRiVw4dy1a8vzEINXz/nkV+lCiAMP8L0YfrCGP78LUydYRjZ08QwPJOilMKQBqvXtzL/g2eor8ijJ5LmmrPH8dANe1FstfLH31xEJBJBSsmSpcupzHfBZzFpWAhXC+LRWB/EnGPdvfXBJxT4FYYQrGpMsLIljZZg+CW3vtDJJfc2MG9NgtVNSa77TwdxW5Dng3RGY9uah9/u6htbWoHwCZo7bN6c00tzZwYr38I0LZzeKKGAxeMP3UxlZXnW/IhvOA/IsoxNXwDHNJBWCGkG+maHVhppSBYsXIyTiuCk49hmMbU1VQytr8bVgpef+idHju9Ei1oEiupiCzeRIZoJ8OjTH1M56kbO/vGPePShe7j5/Boa10aJJR1v9mSzYaVU36K8pcvX4PeZ9MYd5q+NEU+5IKU3UCzBkx9EeHJOBJ8lyXRm+N4hpSjtcX7+834nb38WQQYNXKU3KcEUCMtEOQ52bwwyKXaavBP/uHsGe02b8rkQ9jeSiCHAChbgmCbSHxgAvLlaIZF8MHsRs56Zwa7jqxheKXhxXT5XXnc/GCYT8lczpr6IZMrGtAzSGQfX9TFtXAEir5Cbb36Eu+95inuuGEtNdR5PvLiBN+b1giGZmo27c2gnaOYvWUmdlDR2ppmzzsVnGqDSgIEGjJDEVeBqgfQJwgGDkN/izpdauP35VqThZWVSZBM2kWVPaygrLmL8qCGcfMLR/PiMEwgFg9tV+F8ZjrbCpWR8PqTpAwRKqyzbzfv7kKoihuxTxpSdKli4uhs73k0srVnx0YOE3RZaIiWU5GsPPjAljqsJ+QClGV4f5F+/3pndxlfixpI8+Op61q/pxlecz0UXnNkPdoD5C5aydtESRkwtoCuheXNeB4VhA0yjLzVyVRZTEmAjSGTAziie+biLaNTBKvDjKo1KpMDvAykQ2kvYigoCPPfEXRQVF4Fm0LrBt6OAvGoMy4+0fIjs6MGQXjwNRNpWsnJVjHtenk+8YBI3Xf87lixeSNenDzB/o2KfnQOU5uWTcjTxuEt+SJDJuOi0S3VFgP0nFYFweeC1Zma+14q0BJMmjGLM6GEopZBZtsGtdz0I6SiCQpZviBLp1cQc5Zkg7Tk4jUClMihTgpQ0dCToiGSIpjTCb2H3RsF1GTlxLBsaW7HTGYTPwkmm6YlnPOzL9TAuuQMqfF/pikaoAsP0I6REWH7efecdzvjRWTS19YLWlBf6mL0iytPvtHPlr85l/LhRvPL0A9SXCO59o5d1rSmKQpKe3iRzlkaw/JJ1rTYYkjnL4vzyjpVcftcSfnbDYgy/H5WKc+nPz/LY1Y4HN69dt4HHnn6JwspabMflo5VRhCnw+SwsQ4AWSK2oK8tjzOihFOYFQSVp7kwTSykMAToR46ijD+KF5+9lyewXePSfNyAcFykE2DajR9RSWJiPEIIdtVRabisU7dnVKsxwCZYJiViE3qXP8dmHL/DXv90GQhDyS/YcG8YwguTnhWhujxJpXoQjQjR22tzwRCOzVyR59I0WGjoSGGGLV+e0gdIo4G8PreP6+9aTshV2Vws/OfeH/OD4o/ribq01zzz/KjOuuoTJ0yaybEOEZR0mOtnLRT87jSm7TIR4HGH5aFzTxPS9d2X5py8zb9ZzHHnEYTS0dOG4LmbQz123/JHvHHkwpmny/WMPY+/p03AiMZCCUDC0w3tibHseoBXSX4ARriEQCtLQ2IITbeTWi/cmtvJFbvr7v4l2NFBalIfrJrEzaZrbOknE4yxeF0MIl9VNDtMvW8i1D7ew0/BiZr6ykaffbsHIsxCGxCzw4Su0KAkZ/PGa33LvHTP6CiWG4Sng/5x7Buef80Oam1pp7YJYJE1eZQW//tV5TBw3HOwMUgqUq9hz9ylUVpYzeZeJjBtZR3c0RXt3mkOPPJi62hrSmUxffeHqK/8PwvCSrpaWlqzJkztMCfIrsYYBGSzHKh5HZ0sTebqd0dUBGrs1F//yanTHfN74rBtfcRljRo9ixYpVdEeSzF0nvLzAJxAyS5hTLjc8sZ5ExMF1HZyuXlylsR2FCIQ47+xTByXKWpZFS2sbbZ1dyIAfFengz1ddSkF+PiOH1YGQ2Kk0FSPqOOHYIzxyllLkhywSjomdtDnvjO/3obGmaeK6igP334sfnPxddDLOhuYumpvbtope8g36AM8MBUp3IuEbT9fK9wgF/GQcgWlanPWdMkZU+HlhVi8jR9VQXFLCU8+9RGtnkveWx3GSbnZUGWjHYdGqdhQmqAxD68o59qSjEVqjbQdH04/FJgawHpRStLV1E+2JoXoj/OKyC/n5uaejtaastBikgYrGOOOU71FUVIBje9lucX6A9Y3d1I4azmEH7ZtFM+WmCa41V11xPsHycqItzXz48Zy+Uut/hwKEQLkuMlTL0tUdvPDSa9gEaO9OEk+5bGyz+cPjjaSjUY4+dDqxWJx3359DknzWbOxm2IgaigoLcdM2+HzEnSCxaJRd95nKgo9n8swjt3PUofsiEr2MHlrVl3X2h5pymNKrb72H29vE0SccwU0zfkM6kwGgvaMbVJr8ylIuOMdTimEagMCOtdHek+TgA/fDH/DjOJsK6IaUuK5i7JiRHH3UgQgnxQ23PUgslsAwjB1ihuTXWXDdtHYxn6yx+duzjXREHJq60rzySZR/v9ZGzYjhXHzhWfT09nLpBaeztsUl2ZNgxh8uYuzoYehYJzvtOpHddtuTttYWfnjq9ykoKEApxZWXnoc2TJIZF5WbAVkh5ZKwhYtXcN11t5JfVsPfrvtt3xwRQjB3wVLQMX548rEMHVKLbTuYpsWCZeuJrp/NkMp8qitLBwcMtYdd7bLTaLSRz5x3ZnHfQ09k69Hqv0QB2aOjM0JjR5SX58d5Y2GUJesSQBopXSqrKyktKaSutobx40YT7VjPPofuy4nfP5ry0iLQSX5y8rGUl5cTDBdw+CHT+4ize+0+mSO/dxQrlq0iEo1k+TV6AN/mmRdepbN5A0NHDWfUyKG4rsLn87Fq9TreePtjMAs4+vD9+8wVwJqVy3l19kZum9lFODB4QiWFRAjB9L2nQcCHlJoNjS3/LVHQwMrM7M+W0xFxCfkN5q2O4jPggAP2QLmKUDDQR9H49LNFBAtKefDu67N8GxszXM5PTz+OeDzCxIk7MWZE3QA7fNkvzsLu7eDJZ18bUL7M+YL8/DwEip0njEVrjeN4BfIFi5bR29IGRoBUOp3tpOJ9p6K8lCc/6MHML+PUE44aFFAzDI95sd8+07jsl2ei3CihYKCPIrM1FcMdroBcRtgRcXATLj8+9Rgi8TQXX3wWb730MOHiAvaYNhkpJd3dPdz7r8e47IpfMnzYELTWzF+0nDN+cjJFBUHWLplFRWkRHvtEI7MCGzW8DgKF/Pmvd5FJpz0IoJ8NtkwLbYb47aU/2xSeKs0Rh+7PuCk7IzLdmMYgyVMmzh03/19Gjhj2+Xh+lof0+8svIFRSw0dz5mdLmXLr6iXboJSvpIDcuqgpU6dRO3Iov/v1RViBfA7eb080cOx3DkRoN4tWrmb9iqVM33MKWmveeX8WLSsXc+gB++C6Ltc8tIiNPd5q9dyKElcpKisrOODgfUmlUhim6ZGz+r1Re2cXI3fehQnjx/RRyR3lEgoFufSCH6K1TUdX1DNB2ps98xYsI1BSxjFHHfyF1SwpBI7rEg6HOPW07/PO2x/T09P71Ryx2CEmyPvR2rSBG677DSUlxYypL2TY0FoEMH2vqcyat7Tvw8MnTGTKLhMQQlBWWgJWiFQqjWmaOP4qLr/orH6rbQRaKSzLYsZVFyOFIpNOk+WeZNkvmtVr1rHn1F2yfsPti2KUUpxx+gnUjZnMY0+/7MEI2cLJW+/NYrepuxAKBXG/hDib60d37o9PIt3TzouvvrvVizu2xRzJr8I8Ng0PCv5oznz23WNXPv74U2YtbiLg92oDo0YOp7GpFQ309EY44rD9KCkpJp3JMHHCGA46/GAam1vIpNOMHFLOPntO8RjX0nttwzDRwO5TJ1NQWMyHnyz2/I40MCwLIQRLVqxn0viR/Rp7uN5icMfBNCVXXnYer77yLh0dnfh8Fq7j8ObbH3PIAV5rGv0l61JyJm/K5J0YtvNk/nLrvVlMSG6Xkf+VFZBzao7jsvu0XamuLkdLi/qxe1BfV4VSigOm78Eh++6KAJqaWxk3ZiRKuehsun/JhWcyd8EKPvhkKeGickzLh5LZmisS286QiEVIxXs4cI/xvPTcUySjnUS7WnBSUZoaG1i8cBH19fUIIbB8fqRhIg0Ty+dB5Kf/4FiCAYMbb/ME9/jTL9PdsIrRw+u2eojmfMThB+3FvPff4aFHn0VKzzx9q3A0QCqVZtKEUZimSXVlGd85xOs+ZdsOfr9FcUkJLa0dvPHeJxx+yP5IaWAGveVB03cfz8P/amPmw7dwwHBNz6L/EOtqQqUiuJk4biaJa6dRrs35uyVJJpKsffqiLLnKJBZP8/hFw6iMPMOSpz9E+Aux8srxF1QQKKjEX1BJQVk10w88gGv/cD0nHn8cTz7/GpBBGobXHFApr/z1BZ2ycva+vqYSMLn8qhs55cSjsUxzu7UuML/ash+DZSvWsHDpagA+W7CYp154jQvP/wmuAoXA1hY33/ZPGlYvpvSw8bjNH9HTvIZUrIferg5+ekAx8bTClQEee+o1IkmbeEqRyAiStsZ2POxGuw5SmEhpE/ZpfMQJ+wSlBQV0rW0jr6GJPMslaCoCppfxaiOAESrjtJ16qOyt4MMX/kmp38Fv+Wlq6QQh8fn9AwStB3Tf8iIhKb3844xTv89Nd/6b5nXr+MtNd/PLX5yDkSV3fV0lfOUZ0NPTi8/0YuZMxiboM7EzKULBILgdnLhvGQvnfcKUU/ZixaJPeWHmS6xtjtPQFqWt16Y3lsJJpCGZBlyyhMvsqfudImspcz994PODJREBH3lBHwUhk7I8g5oiyfByk2GlNvVFUUaUB7n85PHE4/MZP1px4K8m07T0ARa95lJWN4ZwaT3BggrMQHhQSn1OHfFkilikG+H38+cb7mDZijXcfeufkYYE5NdSwldaJTlYCJdMJpk9azazZs3mk0/ns7axk56EoCcSwTB9FBQWUVacR3lJPmWlJZQW5VFYECYvHCYcDhHwWx4pS0iU1ti2QzyRJBqL0d0Tpa29i5bWdhqaWmloaqGzoxviKU9M0gc+H+RWZJqSvJBJbanFuLp8Jo8oZOdhYeqKBEUhTUdLI8lkGiX9WOFSj99aUkuwqAp/fhn+cDFWqBBfsAAzEMZ2JU2t3UgrQDAcJpNxGDmkYuAMyrY6E9vY/G+bFSCy0zORSLJq9TrmzV/M/AVLWb+xEZCUl5czcuQQRg4fwpD6amorSyktLRkw5fmanUzaO7pYt66BBYuWMWfuIuYtWMqqdQ10d3Z5M0rnWhhLECZYPgKFAcYOrWLq+Ep2H1/JmJoAJf4kpLpwEt2kExFSyTh2xsZ2NQjDY/9JC3+ogIKSSsxAPqGiSkLFNchQGcHiGkLF1fjDRYM0FNQ7RgG27bB+w0bWrt1AIpmiuKiI2toq6mqrCQT8X+A73Kyt3Ypn698UOmeGhJcgSTn4lG9paWPl6nUsXb6GJctWsXL1OjY0tNDe2UlPb4x0LAmpJGADQSgqYVhdGWOHVTB2aCkjqvOpKjIpDGj8IoWhUqhMAqEyaGWTTsRRruOZS+11B5CmD18wj2BRFfmVoyiqm0Bh9WiCheVbvT56qxSQE5zXhMJLfPyDjGhvnZTe1DmyD4fxyLhbhaf0iz4GE3Tubx7I5tFkDMPw6riDLKfq7umls6uHzq4eurt7iERj9PRG6e6NEo3FvXVg0iAQCFJQEKa0uIiy0mJKiwspLcmnoqyY/HAwWw/QfW3Cc2bHddI4qTiZVAw3k0KaPvLLh2AFC760zf0XKkAp3Qf9fpmTyfXPGfRj2b47yfWv4auahvQVfilnO3e/beFeOo7bt07LcVxPMVJ+I20S1DYkVJtDGYMqILfIOWcC2tu7SKXSAxZp6OxiZtu2GVJfg2maW+Ik2mNC25H1tL5wEgWTzqZg4lleV9zPWcintaaxsQXLMqmqqsBVatDRPVho3NnVQywao6amEtM0+5YtJZMpWtvaPRijXyuZvi73SiMMg7raKrq6e4nH4ggpqCgrJRgKeuHmYOVx7ZlFhPBaLyeSA9psbpKT94vtuuTnhb9YAa5SmIbB2vUbufOuh3j1zQ9paG0nnbEH9O43TJNEazsnnnYcD9x9w+CL1bRHYG198xekmmchzRCVh9+Nr3h0NmqQW0RWvb0RJu31XXqa27j40nO56je/yBZUjM8Z+Q6WZfGvh57issv+REorPn33KcaMHgHALXfczy233Ed7JOoJbTMTaEiDWHsnd955HWeecSI/Pe8KHnnwKTAETz1xJ0ceduCgbLjcYHMch2tvuIOnnnmFaCrlDc9c230EGo1hGEQ7Ornz9ms47tgjBl5PKaVzp2M7WmutH/nPC7qofJKGOk1gpMYYqhH13r+py/5eoSuH7aFbWtu87zqO7n8t5dpaa60jK5/TK/85Wa95+GC96t6puvmV87VWrlbuwM+7rqu11rq7u0eXDd9TExiloUr/9dZ7tNZaZzL2wOsrpTMZ7x7Pv/SmxjdcExytReFYvXDxMq211g/++ykNFZrQaO8dqN7srNWQrw/+7o+0UkprrfXpZ/5SQ73GHKKff/F1rbXWtr3lvR3Hk9WPz71MQ4kmODp7zQoNlf3Oag1hfdTxZ2nXdbXjONp13b7rmJubnZdfe4dTTr4AQkHIC4EQ7LLrTtRWl3moohCYhsSNJ7j40guorCjHcdyB/dO0QggDJ9FJ++xbwQiiHAdh5RFd/y6hFc9SMPa4z+2aKAUI08AsKeOSi66itrqSHxz/nQEzwXU9m//pZ4s4+fSfI/0+sExEP5N1x72PI31hpGVw8GEHM3rkUK97iZBZBMJb7XLpJef1A+FMhOEx/T7P9OVM3uKlK7nvwacxi2tAuxx21HcoLSnCddxNdgfwS8F11/y6b5ltf79k9u+tkEgkOP+SPyJ8PrTjstO4Edx569Xss+dun7v+t48uPkhRo232LaR6GrBCZTipXgzTjxYB2ufcRqh+OkawJEtH7tciwKvseginEJj5+Zzxk4uprali3712w3YcpBCYpsmGjU0ce8LPiCfTmKEgTiaDFJsWS7d1dKKEIBAIcP+d11FZWf4F4bW30G+Tkfr8aE1pjQEsWrICYbs46RgnnHw0Tzx46zYnsLJ/nfWNtz9i7ZJVCMuktKSAl569l333nobSGsd1N52Od26uzVyiJKRBtGEWnYufRFiFZBLdlEw5B+Erw3Fc0r3NtM++FSHkFq+p+ynQsW0c1yWjJcefdC6r16zHygo3Gotz7Enn0rihGSwTJ5kCaQzIQrX2HKxpmfgs6wtRzy1DOPGlSLMhJRqPi2o77jZHQP1mgPePjz+Z7wUFsTgnn/UD6utqSKcz+HzWNqwfAOWkaXj7GlxXoBK95NXvTvm08zDD1TS8ehlmqJTORU+SP+o75NXtvql/f/89eDI2dSPqKC4qYuFnS2jr6OKYk87jozcfo6Agnx/88EI+m7MAEfAxpK4Sv9/HiiWrEUH/QG0akmTa5tSzLyXo9w1QuEBg2xluv/Eq6utqtkCp9ecA17lBN2WXCchgGIHmhZfe5ODv/pjS4nzcfr3iDCHZY9edOfOnJ1GYZX1sYYJyR1dXD1p49MNxozYxkbe1e2LznH8QbZiHFSpFaU3VvlcggOLxx9C9bCbR9e+DNGh85zpGn/wo3pYFemDbY1cRDgZ46sGbOOioM2hs6WDJvAX88JzLqKup4qVnXsEqLkI6Dk89eAu//dMtrJi3FBEObI6b4DgOLz/1YjZiz4nUBLo48UdnU1dbTSZj4/f7tgrHydnykSOGcumFP+T6P80AfylvvvBKFlgUmwyM9PH4g49y/6PP8vrz91FaWjIARR2ggKKiQo+VpqGxpQMp5VYvx891m012raXhvdvBLCQZaaNu+qWEK8bR0d5GSWkZNftdzpIHZiGw6Nk4l9ZPHqB6j7NQrg0Y2ewZkJJoPM6oUSN46rE7mH7AiTgFRTz33Ovg2PhKS8n09PDvR//OrlN2prOrC4zB039DCkbuOgmfZfa9vOs6FOfncddNV2fhjW0rbkkpcZVixtWXMXzoEB555Ck6ozE0mxqLoGH1+iYQggWzZnPDzf/k+j9djm27fcGE2X+B4+67TvRseF4ejzz6LFdeei75eWFs2/5cmyiyUEAOpFv18p9IRHuQpg9/8Tiq9zyHTDrFwUeextVXXcYxRx9K2dSzaXh7BjJQzIb3bqN47OH4C+s2531hmiaR3ghTp0zknn/ewGknn4+vuBBh5JFua+HqGb/jlBOO9jL2rAPdwlQol1AwwGvP3ENVVQXKVdkCv8bMFvtt2+73zU1Zmuu6OI6D7Tib4Vc6y8QwUBrOPesUzj3rFNL9ktVcpPTkM69w+k8vQQbyefejuX3UlwFOOMf+PfSgfakbOwrhuqxf18DxJ5/Phg2NWJaFZZmDnqZp9mW8LQtfoGH+87hGHqlEguGH/g7LH+baG+9mwafzuPyqG4nHotTscRaBionY6QSJ3nZWvvznPsxo87FnWh5p9tQTj+YPf/4Vma5e0m3tnH7mafz2svPJ2LY3gnMrONl8sweB6zjk5YWxLAt/wI/P78Pv9/ctILQsC7/PN9DeK0VRQT6maRIMBDZ7b6tPef014w/48Qf8BAIBQqEQfr+fvfeYgjQNlNZkstTJLXyANyVd8vLC3Hzt5Rz/vZ8ii4p57Y33mbzv9zj4gL0YUluVnSmiz1FqpbF8Fr/51fkELJj/9B9wVYB4Vxt1e5xOxdgDWLhoCdfOuANfWR3LPl3I1TfcyXV/+BVDDv4NC+47BWEV0DzvaSonfZ+KCYdl9xHwQLwcEcUwPMjj91dcyGcLl7NmzXru+fs1A7Gi7FZWQoDjemaztrqCNYtXkE6mOf+Xf2T3qZNQruMNuH4tcZxEip0nT/TYeUp7S5T8QR564gXmLVyK427KLTzWhhdZnXXGSQSDAe5/5BnaW1oxLKvP/CjtLWh87qW3EBgIJ8HwIdV9zUjMQTPhbHZ3172P6kD+WI0covGNyGbAtf3OGu9vBPXpZ/1Sa631rEeu0A+fFdZP/qJGP3vFeB3vbtGObeu9Dz1FI4dqWbKzFoUTtAyN1LPnzNNaaz3vkYv1cz8v0TN/VavfuGYvreyE7umN6vLhe2nM4bp+3H46HotrrXVfph2JRHVrW0ff/+Uy6L0PPVljDNVGyU560eLlWmut//PMS14mGhyVfd6azd6jNpupluu335ultdb6tDMv0VCnjdJJGjm0X8acPeUQDQH9gx//wkMNnng+m/3W9Lt+7vdqjTVM4x+hMer1m29/uEVmbfbfjlZKieO6nPOTH7DX7pO5+dZ7eev9ObR1dpNxnCwoJRBSoNIZamqmcvuNf6Rz/XxWvnMfRqCUZCLKtOOvJ1RUyW133MuHb71HqKIcx7ExfBZOJs3Fv76G1557gDFHXk77indJRzvpbVrG8tdvo/6AS/AZGtNn4LO27OGWn59Hfn7eFgsnLFNi+iz8luxzcMcfewR33vNXZsz4Oy3dvbk+KX123DAMnO4efnHZRey/7+6eGfGZmKbEMgW6rLCfuci+dyZDZcUw7rjxKtrbO7nsd9cTLCzGCIezqLDuV9AQCA1Dq8r4/e8u4sD998J1NzUp0VrrQTdwyAFyHvshRUtrO6lUehOILATadSksKqSmupJ4Txt2Koo0DASCvPKhoBUbNjbhOpvaV3pbBgjsjM3QIbX4/X5S0Q7sZC8IrxwZKK5lY0OTBzWYJnV1NQNs5ufVCpqaW0mlUkgpqa2txsqis1J6aGhjYzNqkERIa8WIYUMxsrB7e3sH0WjMa8upN88IPGp+QWEBlRVlRKJRWprbsPy+7KZwg0Vgkrq62izndGBYL4RAOI7TaBjGFluY5FoMfFkPtNxI3NqCyhb95wb57gCBK8dbHi5kn8ByAhH9elJvmZHrAT3kvnTvgy8ommzte39xvcIZMPJzW5iYwAKgZvOdsXMXH9jrYfC+bkq5W1A6+vZZ26zOaBgG2e3kBiQ9Srl9BW0PGpBe82tp9lWgcpW1LQUtPrceaxjGgPKPBpTrIgxjUxElF82IgddRrrvJnAxCWfky2fQf6ZvB2blHWmhqrecCR2y527PoKytubR+hL8Y/vDpq69wHKBy+P/6iIQgh6F3/IUKaFNRnIQntCc1Nx2j45J+4yV7KJhxDuGYKIIg2zqNj0X8wA0VU7X42ZqAAtKJj6Yv0rPuAyp1PIL9+ah+8IaQkE2ujac69oByKRh1K0dA9iLcupW3hEwjDT9WUUwkU1eOkozR8dCduOkrVpBMIV0/K1i2MQd9xa4ttg5Ris+NEfyK11i9mNx+WA82Dg+tkcOwUTiaJnYqRSfSSSfSQjnWSiraTirSS7G0m0d1AonM98Y61xNtXEWtbQaR5sWfbc/A0gnS0jQ0f/oOulW/2KTbSMI9I04ItwKpMvJNYyzKKRh/OmtevRQPpSAvr37mR0p2Ow8qrZMNb13mtxyLNrHvnVoqGT8cMeam+7lfZT/U0EG9eRMGQvfAXeKFgvGUxGoNQ+TjWvnm9d89oG4mWJZSOPZJVr17jFeGFRCubWOsKYq0riLevJt6xlkTnehLdDSR7m0lFWklH20nHu8gkerCTUex0AsdO4dpprwI4MIuWKJTWeqZpWdZs13WXGIaxk9a6by8x5WRwMglcJ4NyMyg7iZtJopwUbiaBaydRdgrlplF2Cu2mvZu5aZRysRO91O9+OoV1u+C6Dobpp2X+U4Tr9qZj7VwqJ5/stbcXPoQYhE1h+IhHumhe8CzBmqkIINayGH/xCArqpmIEymle+ibKdQgU1jJs/wvpWvE6SgmCJcMHVr4MP+l0hnjrMkKVO3mj15dPz/q5RJpXU7PbSX2fS8QiNH32tHfPfrvtNX76qGcCrQDS8CPNIEgTwwpg+IIYVtD7mxXE8IUxrKDXTcDwYfrDmL5Qbt2BEkIIV7tLLMuabQoh7Ewm80/DMG7KIkkSwPSHMP2h7bMjkeHDScdomP8SpUN3Jdq4lKaFM6nf7QQyiQiGf8sIQjlplJIM3fc8gsXewo68ml1Y++H9rPvwfpa/ch1VOx/t7fvV20I8EkGHhrB+zqNU7HQUKI0WXl6s7BSOo5EFI8gkIgQKqkjFughWTcJJJ3Ay6b57OkowfP8LCBYP7ZuRZiCfsUf9/mv3s+5XwzeVUveYpmkbWmthGMZSpdQZUsqCgc5Yb3JA2S3GdXYR26CnUtmitx7onITETvYSKh7CsH1/SunIvXHtDHllwxBmkFDpMPwF5ZuAhGxh219QS1H95Ox1wfKHKRqyK13r51I5ZjrhijEUVE/AMC2irSvJxLsZc8gvMf15Xr6SzailGSSTSZPsbiBUXEOgsAZpmORXT6BypyNIdm8kv2osIAiV1FNYNyW784cYMJC2eFetB7xv33trNqNX6myRSSuklFqpxt7e3rNnzJiR6b+h86k+n+/hHbWlbU6nynU2beLcL+Tcgq7RF0n1E0SW4rLFyBID9yD9vGt90VYmA55lB23k2W9D51P9fv8jWmtj8y3NH7cs68Qds6W53tTYOztyhJDZuJ5B2n/pwRuBa51t0ir68J9NmzJ7kdaWwtMDtkwUQm56hixzwbuOzipC7sgtzR/3+Xw/yMlcbipzahmJRM5yHGehlNLSWtvbeQ5sEmY/wYmcQL7o85vFfkKaCGkM+J6QhkcHHHTk5r5jbvpO7hn6PQuIHSp8x3E+W7du3dlaa5mrDol+H5JCCNXZ2VlfWFg40zCMnZVSjtbakDuqV8v/z48suuBKKU3HcRZ2dXUdVllZ2ZKT9YAlSkIIpbWWpaWlGxsbG/d3XfcJKaVpGIbQWjs6Zyv+37FVu2ZrrR3DMISU0nRd94mmpqb9Nxf+oNW2/h/IZDLnSCl/bxhG7SaSbs4AI8S3vT/Vf4/A+8IdIYSxKeBQjY7r/F+/33/P5rL9Qu6F1jonYNXT01OSl5d3JogfGYac+GU0i/+Nx+bjUCm1yHXdB5PJ5D2FhYWdWZuvt4R7vmQxZc5TAyxatMg3duzY/YCDpZTTgAlCiOrNQbz/bSNfCCG01u1a68VCiFlKqVeWL1/+wcSJEzOby3Cw4/8DJTagj8iOxpIAAAAASUVORK5CYII=" alt="CAMELS" style="flex:none;width:36px;height:36px;border-radius:9px;display:block;">
@@ -813,6 +845,7 @@ let state = {
   currentBillId: null,
   billLines: [],
   billPrevCumulative: {},
+  billPrevFloor: {},
   billEntryReturnTo: 'wo',
   billPayments: [],
   allBills: [],
@@ -3065,6 +3098,17 @@ async function loadBillEntry(billId, woId){
       state.billLines.forEach(e => { if(prevMap[e.wo_line_item_id] !== undefined) prevMap[e.wo_line_item_id] -= Number(e.this_qty || 0); });
     }
     state.billPrevCumulative = prevMap;
+    // previous quantity per WORK ORDER LINE x FLOOR (budget item) from the other counted bills of this WO
+    const pf = {};
+    try{
+      const { data: ob } = await withRetry(() => sb.from('ra_bills').select('id').eq('wo_id', state.woDetail.id).in('status', ['submitted','approved','paid']).is('deleted_at', null).neq('id', billId));
+      const oids = (ob || []).map(b => b.id);
+      if(oids.length){
+        const { data: oe } = await withRetry(() => sb.from('ra_bill_line_entries').select('wo_line_item_id, budget_item_id, this_qty').in('bill_id', oids));
+        (oe || []).forEach(e => { const k = e.wo_line_item_id + '|' + (e.budget_item_id || ''); pf[k] = (pf[k] || 0) + Number(e.this_qty || 0); });
+      }
+    }catch(e4){ console.error(e4); }
+    state.billPrevFloor = pf;
   } catch(err){ toast('Could not load the bill — please try again.', true); console.error(err); }
 }
 
@@ -3171,6 +3215,18 @@ async function bwLoadOthers(project, excludeBillId){
   return out;
 }
 
+function billDefaultBI(l){ return l.ref_budget_item_id || l.budget_item_id || null; }
+// previous qty billed on this WO line for one floor (budget item); older entries without a floor count against the line's default item
+function billPrevFloorQty(l, bi){
+  const m = state.billPrevFloor || {};
+  return (m[l.id + '|' + (bi || '')] || 0) + ((bi || '') === (billDefaultBI(l) || '') && bi ? (m[l.id + '|'] || 0) : 0);
+}
+// floors (budget items) of this line that were billed before
+function billPriorFloors(l){
+  const m = state.billPrevFloor || {}, out = [];
+  Object.keys(m).forEach(k => { if(k.startsWith(l.id + '|') && m[k] > 0){ const bi = k.slice(l.id.length + 1) || billDefaultBI(l); if(bi && !out.includes(bi)) out.push(bi); } });
+  return out;
+}
 function renderBillEntry(project){
   const tabContent = document.getElementById('tabContent');
   const wo = state.woDetail;
@@ -3187,7 +3243,15 @@ function renderBillEntry(project){
   const canDelete = !isFinalized && (isOwner() || ((bill.status === 'draft' || bill.status === 'submitted') && canCreateWO()));
 
   const defaultBI = (l) => l.ref_budget_item_id || l.budget_item_id || null;
-  const entsOf = (l) => { const e = (state.billLines || []).filter(x => x.wo_line_item_id === l.id); return e.length ? e : [{ wo_line_item_id: l.id, budget_item_id: defaultBI(l), this_qty: 0 }]; };
+  const entsOf = (l) => {
+    let e = (state.billLines || []).filter(x => x.wo_line_item_id === l.id);
+    if(!e.length) e = [{ wo_line_item_id: l.id, budget_item_id: defaultBI(l), this_qty: 0 }];
+    if(LS) return e;
+    // also show every floor already billed earlier on this line (this bill = 0 unless entered)
+    const have = e.map(x => x.budget_item_id || defaultBI(l));
+    const extra = billPriorFloors(l).filter(bi => !have.includes(bi)).map(bi => ({ wo_line_item_id: l.id, budget_item_id: bi, this_qty: 0, _v: true }));
+    return e.concat(extra);
+  };
   const wbsFloors = LS ? [] : sbLeafFloors();
   const biById = (id) => (state.budgetItems || []).find(b => b.id === id);
   const wbsPickerHtml = (rid, biId, editable) => {
@@ -3218,6 +3282,9 @@ function renderBillEntry(project){
     return ents.map((e, k) => {
       const rid = l.id + '_' + k, thisQty = Number(e.this_qty || 0), last = k === ents.length - 1;
       const canEditRow = isEditable && !lineLocked;
+      const fPrev = LS ? (k === 0 ? prevQty : 0) : billPrevFloorQty(l, e.budget_item_id || defaultBI(l));
+      const fCum = fPrev + thisQty;
+      if(!isEditable && !(thisQty > 0) && !(fPrev > 0)) return '';
       return `
       <div class="bitem" data-row="${rid}" style="grid-template-columns:1fr 60px 80px 90px 90px 90px 110px;">
         <span class="desc">${k === 0 ? escapeHtml(item.description||'') + lockBadge : '<span style="color:#8B8676;">↳ same item, another floor</span>'}
@@ -3228,9 +3295,9 @@ function renderBillEntry(project){
           ${canEditRow && !LS && k > 0 ? `<a href="#" class="bill-rmrow" data-row="${rid}" style="font-size:12px;color:var(--red);margin-left:10px;">remove row</a>` : ''}</span>
         <span class="unit">${escapeHtml(item.unit||'')}</span>
         <span class="rate">${l.activity==='lumpsum' ? '—' : '₹'+fmtNum(rate)}</span>
-        <span class="qty">${k === 0 ? fmtNum(prevQty) : ''}</span>
+        <span class="qty" id="billPrev-${rid}">${fmtNum(fPrev)}</span>
         <span style="text-align:right;">${canEditRow ? `<input type="number" inputmode="decimal" step="0.001" class="bill-line-qty" data-row="${rid}" data-line="${l.id}" data-rate="${rate}" data-ref="${defaultBI(l) || ''}" value="${thisQty||''}" placeholder="0">` : `<span class="qty">${fmtNum(thisQty)}</span>`}</span>
-        <span class="qty" ${k === 0 ? `id="billCum-${l.id}" data-prev="${prevQty}"` : ''}>${k === 0 ? fmtNum(cumQty) : ''}</span>
+        <span class="qty" id="billCum-${rid}" data-prev="${fPrev}">${fmtNum(fCum)}</span>
         <span class="amount" id="billAmt-${rid}">₹${fmtNum(thisQty * rate)}</span>
       </div>`;
     }).join('');
@@ -3264,7 +3331,7 @@ function renderBillEntry(project){
       ${bill.rejection_reason ? `<div class="locked-note" style="color:var(--red);border-color:rgba(193,69,58,0.35);background:rgba(193,69,58,0.08);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:inline-block;vertical-align:-2px"><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg> Rejected: ${escapeHtml(bill.rejection_reason)}</div>` : ''}
 
       ${LS ? `<div id="lsTrack"></div>${isEditable ? lsAddBarHtml() : ''}<div class="wo-rate-note" style="margin-bottom:8px;">Lump-sum billing — enter the <b>amount in ₹</b> for each floor. Quantity and rate are not used.</div>` : ''}
-      <div class="bitem-head" style="grid-template-columns:1fr 60px 80px 90px 90px 90px 110px;">
+      <div class="bitem-head bill-head" style="grid-template-columns:1fr 60px 80px 90px 90px 90px 110px;">
         <span>${LS ? 'Item – floor' : 'Item'}</span><span>Unit</span><span class="rate">${LS ? '' : 'Rate'}</span><span class="qty">${LS ? 'Previous ₹' : 'Previous'}</span><span class="qty">${LS ? 'This bill ₹' : 'This Bill'}</span><span class="qty">${LS ? 'Cumulative ₹' : 'Cumulative'}</span><span class="amount">This Amount</span>
       </div>
       <div id="billRows">${rowsHtml}${isEditable ? `<div class="wo-rate-note" style="margin:10px 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><b>+ Add item to this bill:</b> <select id="billAddSel" style="max-width:420px;"><option value="">Choose Work Order line…</option>${lines.map(l => { const it = woLineItem(l); return `<option value="${l.id}">${escapeHtml(it.description||'')} — ${escapeHtml(it.unit||'')}${l.activity==='lumpsum' ? '' : ' @ ₹'+fmtNum(Number(l.agreed_rate||0))}</option>`; }).join('')}</select> <button class="btn tiny" id="billAddBtn" type="button">Add</button> <span style="font-size:12px;color:#8B8676;">Same line can be added again against a different WBS.</span></div>` : ''}${isEditable && hiddenCount ? `<div class="wo-rate-note" style="margin:8px 0;">${hiddenCount} Work Order line${hiddenCount>1?'s':''} left out of this bill. <a href="#" id="billUnhide">Show them again</a></div>` : ''}${LS && !lines.length ? '<div class="wo-lines-empty">No items added yet — choose category, floor and item above.</div>' : ''}</div>
@@ -3363,7 +3430,12 @@ function renderBillEntry(project){
       st += amt;
       const ae = document.getElementById(`billAmt-${inp.dataset.row}`); if(ae) ae.textContent = '₹'+fmtNum(amt);
     });
-    document.querySelectorAll('[id^="billCum-"]').forEach(c => { const lid = c.id.slice(8); let t = 0; document.querySelectorAll(`.bill-line-qty[data-line="${lid}"]`).forEach(i => t += parseFloat(i.value) || 0); if(document.querySelector(`.bill-line-qty[data-line="${lid}"]`)) c.textContent = fmtNum((parseFloat(c.dataset.prev) || 0) + t); });
+    document.querySelectorAll('[id^="billCum-"]').forEach(c => {
+      const rid = c.id.slice(8); const inp = document.querySelector(`.bill-line-qty[data-row="${rid}"]`); if(!inp) return;
+      const l = lines.find(x => x.id === inp.dataset.line); let prev = parseFloat(c.dataset.prev) || 0;
+      if(l && !LS){ prev = billPrevFloorQty(l, bwRowBI(rid) || defaultBI(l)); c.dataset.prev = prev; const pe = document.getElementById('billPrev-' + rid); if(pe) pe.textContent = fmtNum(prev); }
+      c.textContent = fmtNum(prev + (parseFloat(inp.value) || 0));
+    });
     if(!LS) bwUpdateInfo();
     const ret = st * (wo.retention_pct||0)/100;
     const tds = st * (wo.tds_pct||0)/100;
@@ -3435,7 +3507,7 @@ function renderBillEntry(project){
       if(sel.value && itemsForStage(sel.value).length === 1) it.value = itemsForStage(sel.value)[0].id;
       bwUpdateInfo();
     }));
-    document.querySelectorAll('.bill-wbs-item').forEach(sel => sel.addEventListener('change', bwUpdateInfo));
+    document.querySelectorAll('.bill-wbs-item').forEach(sel => sel.addEventListener('change', () => { bwUpdateInfo(); recompute(); }));
     const reRender = (mut) => { state.billLines = bwCollect(lines); mut(state.billLines); renderBillEntry(project); };
     document.querySelectorAll('.bill-split').forEach(a => a.onclick = ev => { ev.preventDefault(); reRender(arr => arr.push({ wo_line_item_id: a.dataset.line, budget_item_id: null, this_qty: 0 })); });
     document.querySelectorAll('.bill-hide').forEach(a => a.onclick = ev => { ev.preventDefault(); const lid = a.dataset.line; state.billLines = bwCollect(lines).filter(e => e.wo_line_item_id !== lid); bwHiddenSet().add(lid); renderBillEntry(project); });
@@ -3506,13 +3578,26 @@ function printBill(bill, wo, lines, subTotal, retentionAmt, tdsAmt, safetyAmt, d
   const rows = lines.map((l) => {
     const item = woLineItem(l);
     const rate = Number(l.agreed_rate || 0);
-    const prevQty = state.billPrevCumulative[l.id] || 0;
-    const thisQty = lineMap[l.id] || 0;
-    if(!(Number(thisQty) > 0) && !(Number(prevQty) > 0)) return '';   // zero-quantity lines are not printed
-    const cumQty = prevQty + Number(thisQty);
-    return `<tr>
-      <td>${++slNo}</td>
-      <td>${escapeHtml(item.description||'')}${(wbsMap[l.id] || []).map(t => `<div class="wo-doc-scope">WBS: ${escapeHtml(t)}</div>`).join('')}${(remMap[l.id] || []).map(t => `<div class="wo-doc-scope"><i>Remarks: ${escapeHtml(t)}</i></div>`).join('')}</td>
+    const defBI = billDefaultBI(l);
+    // one printed row per floor: floors in this bill + floors billed earlier
+    const floors = [];
+    state.billLines.filter(e => e.wo_line_item_id === l.id).forEach(e => { const bi = e.budget_item_id || defBI || ''; let f = floors.find(x => x.bi === bi); if(!f){ f = { bi, qty: 0, rem: [] }; floors.push(f); } f.qty += Number(e.this_qty || 0); if(e.remarks && Number(e.this_qty) > 0) f.rem.push(e.remarks); });
+    if(l.activity !== 'lumpsum') billPriorFloors(l).forEach(bi => { if(!floors.find(x => x.bi === bi)) floors.push({ bi, qty: 0, rem: [] }); });
+    if(!floors.length) floors.push({ bi: defBI || '', qty: 0, rem: [] });
+    const out = [];
+    let first = true, sl = null;
+    floors.forEach(f => {
+      const thisQty = f.qty;
+      const prevQty = l.activity === 'lumpsum' ? (state.billPrevCumulative[l.id] || 0) : billPrevFloorQty(l, f.bi);
+      if(!(Number(thisQty) > 0) && !(Number(prevQty) > 0)) return;   // zero-quantity floors are not printed
+      const cumQty = prevQty + Number(thisQty);
+      const bi = (state.budgetItems || []).find(b => b.id === f.bi);
+      const wbs = bi ? `<div class="wo-doc-scope">WBS: ${escapeHtml(getStagePath(bi.stage_id))} › ${escapeHtml(bi.description)}</div>` : '';
+      const rem = f.rem.map(t => `<div class="wo-doc-scope"><i>Remarks: ${escapeHtml(t)}</i></div>`).join('');
+      if(first){ sl = ++slNo; }
+      out.push(`<tr>
+      <td>${first ? sl : ''}</td>
+      <td>${first ? escapeHtml(item.description||'') : '<span style="color:#555;">↳ same item</span>'}${wbs}${rem}</td>
       <td class="num">${escapeHtml(item.unit||'')}</td>
       <td class="num">${l.activity==='lumpsum' ? '—' : fmtNum(rate)}</td>
       <td class="num">${fmtNum(prevQty)}</td>
@@ -3521,7 +3606,10 @@ function printBill(bill, wo, lines, subTotal, retentionAmt, tdsAmt, safetyAmt, d
       <td class="num">${fmtNum(thisQty*rate)}</td>
       <td class="num">${fmtNum(cumQty)}</td>
       <td class="num">${fmtNum(cumQty*rate)}</td>
-    </tr>`;
+    </tr>`);
+      first = false;
+    });
+    return out.join('');
   }).join('');
 
   const totalDeductions = retentionAmt + tdsAmt + safetyAmt + debitAmt;
@@ -5179,6 +5267,7 @@ async function printWorkOrder(woId, project){
     document.getElementById('printArea').innerHTML = `
       <div class="wo-doc">
         ${buildPrintHeader(true)}
+        ${wo.status === 'draft' ? `<div class="wo-doc-draftmark">DRAFT<small>NOT ISSUED</small></div><div class="wo-doc-draftnote">DRAFT WORK ORDER — NOT ISSUED. For review only; not valid for execution or billing.</div>` : ''}
         <div class="wo-doc-title">SUBCONTRACT WORK ORDER</div>
         <div class="wo-doc-meta">
           <div><div class="l">Order ID</div>#${wo.order_no}</div>
@@ -5210,15 +5299,7 @@ async function printWorkOrder(woId, project){
           </tbody>
         </table>
 
-        <h3 class="section">Recovery Terms</h3>
-        <table class="wo-doc-table wo-doc-table-narrow">
-          <tbody>
-            <tr><td>Retention</td><td class="num">${wo.retention_pct}%</td></tr>
-            <tr><td>TDS</td><td class="num">${wo.tds_pct}%</td></tr>
-            <tr><td>Safety</td><td class="num">${wo.safety_pct ? wo.safety_pct+'%' : '₹'+fmtNum(wo.safety_amount||0)}</td></tr>
-            <tr><td>GST</td><td class="num">${wo.gst_pct||0}%</td></tr>
-          </tbody>
-        </table>
+        <div class="wo-doc-deduct-lines" style="margin:10px 0 4px;text-align:right;"><b style="font-size:10px;">Deductions:</b> Retention @${wo.retention_pct||0}% &nbsp;·&nbsp; TDS @${wo.tds_pct||0}% &nbsp;·&nbsp; Safety ${wo.safety_pct ? '@'+wo.safety_pct+'%' : '₹'+fmtNum(wo.safety_amount||0)} &nbsp;·&nbsp; GST ${wo.gst_pct||0}%</div>
 
         ${wo.remarks ? `<h3 class="section">Remarks / Special Notes</h3><div class="wo-doc-terms">${escapeHtml(wo.remarks)}</div>` : ''}
         <h3 class="section">Terms &amp; Conditions</h3>
@@ -6167,6 +6248,16 @@ function toast(msg, isErr){
   function scan(root){ (root.querySelectorAll ? root.querySelectorAll('input[type="number"]') : []).forEach(enhance); }
   new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => { if(n.nodeType === 1){ if(n.tagName === 'INPUT') enhance(n); scan(n); } }))).observe(document.documentElement, { childList: true, subtree: true });
   scan(document);
+})();
+</script>
+<script>
+(function(){
+  const b=document.body;
+  document.addEventListener('click', function(e){
+    if(e.target.closest('#mNavBtn')){ b.classList.toggle('nav-open'); return; }
+    if(e.target.id==='mBackdrop'){ b.classList.remove('nav-open'); return; }
+    if(b.classList.contains('nav-open') && e.target.closest('.sidebar') && e.target.closest('button, a, .proj-card, [data-pid], select option')){ setTimeout(()=>b.classList.remove('nav-open'),150); }
+  });
 })();
 </script>
 </body>
