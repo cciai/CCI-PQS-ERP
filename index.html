@@ -2041,7 +2041,7 @@ async function renderSiteBillsTab(project){
         ${canAct && (c.status === 'new' || c.status === 'under_review') ? `<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;"><button class="btn tiny primary sbBill">Create RA bill</button>${c.status === 'new' ? `<button class="btn tiny sbReview">Mark under review</button>` : ''}<button class="btn tiny sbReject">Reject</button></div>` : ''}
         ${c.status === 'billed' && c.bill_id ? `<div style="margin-top:8px;"><button class="btn tiny sbOpen">Open bill</button></div>` : ''}
       </div>`).join('') : `<div class="wo-lines-empty">Nothing here.</div>`}</div>
-    ${isOwner() ? `<h4 class="wo-lines-title">Site engineer logins</h4><div id="sbEng"><div class="loading">Loading…</div></div>` : ''}`;
+    ${isOwner() ? `<h4 class="wo-lines-title">Site engineer logins <a href="site.html" target="_blank" rel="noopener" class="btn tiny" style="margin-left:10px;text-decoration:none;font-weight:600;" title="Opens the engineers' mobile page as you. Read-only: nothing can be submitted.">👁 Preview as engineer</a></h4><div id="sbEng"><div class="loading">Loading…</div></div>` : ''}`;
   tc.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { state.sbFilter = b.dataset.f; renderSiteBillsTab(project); });
   const byId = id => claims.find(c => c.id === id);
   tc.querySelectorAll('.wo-card[data-id]').forEach(card => {

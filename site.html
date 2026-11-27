@@ -51,7 +51,7 @@ const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<'
 const S = { ctx:null, project:null, subs:[], floors:[], tab:'new', subId:'', woId:'', lines:[], pick:{ floor:'', item:'', flats:[], wl:'', qty:'' }, msg:null, my:null, busy:false };
 const STATUS = { new:'Received', under_review:'Under review', billed:'Billed', rejected:'Rejected' };
 
-function showErr(e){ const m = (e && e.message) || String(e); return m.replace(/^.*?:\s*(?=You |This |Flat|Already|Add |Select|Enter|A selected|Billing)/,''); }
+function showErr(e){ const m = (e && e.message) || String(e); return m.replace(/^.*?:\s*(?=You |This |Flat|Already|Add |Select|Enter|A selected|Billing|Preview)/,''); }
 
 async function boot(){
   const { data:{ session } } = await sb.auth.getSession();
@@ -88,8 +88,8 @@ async function loadProject(){
 }
 function header(){
   const multi = S.ctx.projects.length > 1;
-  return `<div class="hdr"><div><b>${esc(S.project.name)}</b><small>${esc(S.ctx.name)}</small></div>
-    <div style="display:flex;gap:6px">${multi?`<button onclick="switchProject()">Project</button>`:''}<button onclick="logout()">Sign out</button></div></div>`;
+  return (S.ctx.preview ? `<div style="background:var(--amber);color:#fff;text-align:center;padding:7px 10px;font:700 13px 'Barlow'">PREVIEW AS OWNER · you can look around, nothing is submitted</div>` : '') + `<div class="hdr"><div><b>${esc(S.project.name)}</b><small>${esc(S.ctx.name)}</small></div>
+    <div style="display:flex;gap:6px">${multi?`<button onclick="switchProject()">Project</button>`:''}${S.ctx.preview ? `<button onclick="location.href='index.html'">Back to CAMELS</button>` : `<button onclick="logout()">Sign out</button>`}</div></div>`;
 }
 function switchProject(){
   const i = S.ctx.projects.findIndex(p => p.id === S.project.id);
@@ -145,7 +145,7 @@ function newView(){
     if(S.lines.length){
       h += `<div class="card"><h2 style="font-size:20px">This bill</h2>${S.lines.map((l,i) => `<div class="line"><div><b>${esc(l.itemName)}</b> – ${esc(l.floorName)}<div class="note">${l.multi ? esc(l.woRef) + ' · ' : ''}${l.flatNos === 'Whole floor' ? 'Whole floor' : 'Flats ' + esc(l.flatNos)} · ${esc(l.qty)} ${esc(l.unit||'')}</div></div><button class="x" data-rm="${i}">Remove</button></div>`).join('')}
         <label>Remarks (optional)</label><textarea id="rem"></textarea>
-        <button class="btn" id="submit" ${S.busy?'disabled':''}>Submit bill to office</button></div>`;
+        <button class="btn" id="submit" ${S.busy||S.ctx.preview?'disabled':''}>${S.ctx.preview ? 'Submit disabled in preview' : 'Submit bill to office'}</button></div>`;
     }
   }
   $('body').innerHTML = h;
