@@ -303,6 +303,29 @@
   #billRows .bitem a.bill-split{ color:var(--amber); font-weight:600; text-decoration:none; }
   #billRows .bitem a.bill-split:hover, #billRows .bitem a.bill-hide:hover, #billRows .bitem a.bill-rmrow:hover, #billUnhide:hover{ text-decoration:underline; }
   #billUnhide{ color:var(--amber); font-weight:600; text-decoration:none; }
+  /* ---- bill screen clean-up ---- */
+  #billRows .bitem{ padding:10px 10px; border-bottom:1px solid var(--paper-line); align-items:start; }
+  #billRows .bitem > span:not(.desc){ padding-top:4px; }
+  #billRows .bitem > span.desc{ font-size:13px; }
+  #billRows .bitem-sub{ margin-top:4px; padding:5px 8px; background:#FAF9F4; border-left:2px solid var(--paper-line); border-radius:0 4px 4px 0; display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px; font-weight:400; }
+  #billRows .bitem-sub .bill-wbs{ display:flex; gap:6px; flex-wrap:wrap; margin:0 !important; }
+  #billRows .bitem-sub select{ font-size:11.5px; padding:3px 5px; max-width:200px; color:#5E5A4C; }
+  #billRows .bitem-sub .wbs-info{ flex-basis:100%; margin:0 !important; font-size:11px; }
+  #billRows .bitem-sub input.bill-remark{ flex:1 1 160px; width:auto !important; margin:0 !important; font-size:11.5px !important; padding:3px 6px; color:#5E5A4C; }
+  #billRows .bitem-sub .wo-line-path{ margin:0; }
+  #billRows .bitem-links{ flex-basis:100%; display:flex; gap:14px; font-size:11px; }
+  #billRows .bitem-links a{ color:#8B8676; font-weight:500; text-decoration:none; }
+  #billRows .bitem-links a.bill-split{ color:var(--amber); }
+  #billRows .bitem-links a:hover{ text-decoration:underline; color:var(--red); }
+  #billRows .bitem-links a.bill-split:hover{ color:var(--amber); }
+  .bill-addbar{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:10px 0 4px; padding:6px 10px; border:1px dashed rgba(226,134,30,0.45); border-radius:6px; background:rgba(226,134,30,0.05); font-size:12px; color:var(--amber); }
+  .bill-addbar select{ max-width:380px; font-size:12px; padding:3px 6px; }
+  .bill-sticky{ max-width:none !important; display:grid; grid-template-columns:repeat(8,auto); justify-content:space-between; gap:6px 18px; position:sticky; bottom:0; z-index:5; margin:14px -24px 0 !important; border-radius:0 !important; border-width:1px 0 0 0 !important; box-shadow:0 -4px 12px rgba(0,0,0,0.06); padding:10px 24px !important; }
+  .bill-sticky .bs-cell label{ display:block; font-family:'Barlow',sans-serif; font-size:9.5px; text-transform:uppercase; letter-spacing:.05em; color:#8B8676; margin:0; }
+  .bill-sticky .bs-cell b{ font-family:'Barlow',sans-serif; font-size:13px; }
+  .bill-sticky .bs-net b{ font-family:'Barlow Condensed',sans-serif; font-size:18px; color:var(--amber); }
+  @media (max-width:1100px){ .bill-sticky{ grid-template-columns:repeat(4,1fr); } }
+  @media (max-width:760px){ .bill-sticky{ position:static; margin:14px 0 !important; border-width:1px !important; border-radius:10px !important; box-shadow:none; padding:12px !important; grid-template-columns:repeat(2,1fr); } }
   .bitem-head{ display:grid; grid-template-columns: 1fr 50px 85px 90px 95px 86px; gap:8px; padding:0 10px 4px; font-family:'Barlow',sans-serif; font-size:9.5px; text-transform:uppercase; letter-spacing:.06em; color:#B0AB98; }
   .bitem-head .qty, .bitem-head .rate, .bitem-head .amount{ text-align:right; }
 
@@ -3288,11 +3311,11 @@ function renderBillEntry(project){
       return `
       <div class="bitem" data-row="${rid}" style="grid-template-columns:1fr 60px 80px 90px 90px 90px 110px;">
         <span class="desc">${k === 0 ? escapeHtml(item.description||'') + lockBadge : '<span style="color:#8B8676;">↳ same item, another floor</span>'}
+          <div class="bitem-sub">
           ${LS ? `<div class="wo-line-path">${escapeHtml(getStagePath(item.stage_id))}</div>` : wbsPickerHtml(rid, e.budget_item_id, canEditRow)}
-          ${LS ? '' : (canEditRow ? `<input class="bill-remark" data-row="${rid}" placeholder="Remarks for this item (optional)" maxlength="300" value="${escapeHtml(e.remarks||'')}" style="width:100%;margin-top:5px;font-size:12px;">` : (e.remarks ? `<div class="wo-line-path" style="font-style:italic;">Remarks: ${escapeHtml(e.remarks)}</div>` : ''))}
-          ${canEditRow && !LS && last ? `<a href="#" class="bill-split" data-line="${l.id}" style="font-size:12px;">+ add this item again against another WBS</a>` : ''}
-          ${canEditRow && !LS && k === 0 ? `<a href="#" class="bill-hide" data-line="${l.id}" title="Leave this Work Order line out of this bill (quantity becomes zero and it is not shown or printed)" style="font-size:12px;color:var(--red);margin-left:10px;">✕ not in this bill</a>` : ''}
-          ${canEditRow && !LS && k > 0 ? `<a href="#" class="bill-rmrow" data-row="${rid}" style="font-size:12px;color:var(--red);margin-left:10px;">remove row</a>` : ''}</span>
+          ${LS ? '' : (canEditRow ? `<input class="bill-remark" data-row="${rid}" placeholder="Remarks (optional)" maxlength="300" value="${escapeHtml(e.remarks||'')}">` : (e.remarks ? `<div class="wo-line-path" style="font-style:italic;">Remarks: ${escapeHtml(e.remarks)}</div>` : ''))}
+          ${canEditRow && !LS ? `<div class="bitem-links">${last ? `<a href="#" class="bill-split" data-line="${l.id}" title="Bill this item again against another floor / WBS">+ another floor</a>` : ''}${k === 0 ? `<a href="#" class="bill-hide" data-line="${l.id}" title="Leave this Work Order line out of this bill (quantity becomes zero and it is not shown or printed)">✕ not in this bill</a>` : `<a href="#" class="bill-rmrow" data-row="${rid}">✕ remove row</a>`}</div>` : ''}
+          </div></span>
         <span class="unit">${escapeHtml(item.unit||'')}</span>
         <span class="rate">${l.activity==='lumpsum' ? '—' : '₹'+fmtNum(rate)}</span>
         <span class="qty" id="billPrev-${rid}">${fmtNum(fPrev)}</span>
@@ -3334,7 +3357,7 @@ function renderBillEntry(project){
       <div class="bitem-head bill-head" style="grid-template-columns:1fr 60px 80px 90px 90px 90px 110px;">
         <span>${LS ? 'Item – floor' : 'Item'}</span><span>Unit</span><span class="rate">${LS ? '' : 'Rate'}</span><span class="qty">${LS ? 'Previous ₹' : 'Previous'}</span><span class="qty">${LS ? 'This bill ₹' : 'This Bill'}</span><span class="qty">${LS ? 'Cumulative ₹' : 'Cumulative'}</span><span class="amount">This Amount</span>
       </div>
-      <div id="billRows">${rowsHtml}${isEditable ? `<div class="wo-rate-note" style="margin:10px 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><b>+ Add item to this bill:</b> <select id="billAddSel" style="max-width:420px;"><option value="">Choose Work Order line…</option>${lines.map(l => { const it = woLineItem(l); return `<option value="${l.id}">${escapeHtml(it.description||'')} — ${escapeHtml(it.unit||'')}${l.activity==='lumpsum' ? '' : ' @ ₹'+fmtNum(Number(l.agreed_rate||0))}</option>`; }).join('')}</select> <button class="btn tiny" id="billAddBtn" type="button">Add</button> <span style="font-size:12px;color:#8B8676;">Same line can be added again against a different WBS.</span></div>` : ''}${isEditable && hiddenCount ? `<div class="wo-rate-note" style="margin:8px 0;">${hiddenCount} Work Order line${hiddenCount>1?'s':''} left out of this bill. <a href="#" id="billUnhide">Show them again</a></div>` : ''}${LS && !lines.length ? '<div class="wo-lines-empty">No items added yet — choose category, floor and item above.</div>' : ''}</div>
+      <div id="billRows">${rowsHtml}${isEditable ? `<div class="bill-addbar"><b>+ Add item</b> <select id="billAddSel"><option value="">Choose Work Order line…</option>${lines.map(l => { const it = woLineItem(l); return `<option value="${l.id}">${escapeHtml(it.description||'')} — ${escapeHtml(it.unit||'')}${l.activity==='lumpsum' ? '' : ' @ ₹'+fmtNum(Number(l.agreed_rate||0))}</option>`; }).join('')}</select> <button class="btn tiny" id="billAddBtn" type="button">Add</button></div>` : ''}${isEditable && hiddenCount ? `<div class="wo-rate-note" style="margin:8px 0;">${hiddenCount} Work Order line${hiddenCount>1?'s':''} left out of this bill. <a href="#" id="billUnhide">Show them again</a></div>` : ''}${LS && !lines.length ? '<div class="wo-lines-empty">No items added yet — choose category, floor and item above.</div>' : ''}</div>
 
 
 <h4 class="wo-lines-title">Debit / Recovery (optional)</h4>
@@ -3353,15 +3376,15 @@ function renderBillEntry(project){
       </div>
       <div class="wo-rate-note">Overriding here only changes GST for this one bill — the Work Order's own GST setting stays as-is for future bills.</div>
 
-      <div class="bill-summary">
-        <div class="bill-summary-row"><span>Sub Total (A)</span><span id="billSubTotal">₹${fmtNum(subTotal)}</span></div>
-        <div class="bill-summary-row"><span>Retention (${wo.retention_pct}%)</span><span id="billRetention">− ₹${fmtNum(retentionAmt)}</span></div>
-        <div class="bill-summary-row"><span>TDS (${wo.tds_pct}%)</span><span id="billTds">− ₹${fmtNum(tdsAmt)}</span></div>
-        <div class="bill-summary-row"><span>Safety</span><span id="billSafety">− ₹${fmtNum(safetyAmt)}</span></div>
-        <div class="bill-summary-row"><span>Debit</span><span id="billDebit">− ₹${fmtNum(debitAmt)}</span></div>
-        <div class="bill-summary-row"><span>GST (<span id="billGstPct">${effectiveGstPct}</span>%)</span><span id="billGst">+ ₹${fmtNum(gstAmt)}</span></div>
-        <div class="bill-summary-row bill-summary-total"><span>Net Payable (This Bill)</span><span id="billNet">₹${fmtNum(netPayable)}</span></div>
-        <div class="bill-summary-row"><span>Cumulative Bill Value</span><span>₹${fmtNum(cumulativeSubTotal)}</span></div>
+      <div class="bill-summary bill-sticky">
+        <div class="bs-cell"><label>Sub total (A)</label><b id="billSubTotal">₹${fmtNum(subTotal)}</b></div>
+        <div class="bs-cell"><label>Retention ${wo.retention_pct}%</label><b id="billRetention">− ₹${fmtNum(retentionAmt)}</b></div>
+        <div class="bs-cell"><label>TDS ${wo.tds_pct}%</label><b id="billTds">− ₹${fmtNum(tdsAmt)}</b></div>
+        <div class="bs-cell"><label>Safety</label><b id="billSafety">− ₹${fmtNum(safetyAmt)}</b></div>
+        <div class="bs-cell"><label>Debit</label><b id="billDebit">− ₹${fmtNum(debitAmt)}</b></div>
+        <div class="bs-cell"><label>GST <span id="billGstPct">${effectiveGstPct}</span>%</label><b id="billGst">+ ₹${fmtNum(gstAmt)}</b></div>
+        <div class="bs-cell bs-net"><label>Net payable (this bill)</label><b id="billNet">₹${fmtNum(netPayable)}</b></div>
+        <div class="bs-cell bs-cum"><label>Cumulative bill value</label><b>₹${fmtNum(cumulativeSubTotal)}</b></div>
       </div>
 
       ${isEditable && isDraft ? `
